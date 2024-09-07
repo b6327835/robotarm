@@ -34,7 +34,7 @@ class SimpleSerialReceiver(Node):
             msg.data = str(data)
             self.pub_.publish(msg)
 
-
+#test
 def main():
     rclpy.init()
 

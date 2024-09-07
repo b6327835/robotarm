@@ -3,12 +3,8 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include "arduinobot_msgs/action/arm_task.hpp"
 #include <moveit/move_group_interface/move_group_interface.h>
-#include <geometry_msgs/msg/pose.hpp>
-#include <moveit/kinematic_constraints/utils.h>
-#include <moveit/planning_interface/planning_interface.h>
 
 #include <memory>
-#include <thread>
 
 using namespace std::placeholders;
 
@@ -65,54 +61,45 @@ private:
     // MoveIt 2 Interface
     auto arm_move_group = moveit::planning_interface::MoveGroupInterface(shared_from_this(), "arm");
 
-    // Define the target pose (end-effector position)
-    geometry_msgs::msg::Pose target_pose;
-    target_pose.position.x = goal_handle->get_goal()->x;
-    target_pose.position.y = goal_handle->get_goal()->y;
-    target_pose.position.z = goal_handle->get_goal()->z;
+    // Convert XYZ and jog_step to joint positions if needed
+    std::vector<double> arm_joint_goal = {
+      goal_handle->get_goal()->x,
+      goal_handle->get_goal()->y,
+      goal_handle->get_goal()->z
+    };
 
-    // Set the target pose
-    arm_move_group.setPoseTarget(target_pose);
-
-    // Plan and execute the movement
-    moveit::planning_interface::MoveGroupInterface::Plan plan;
-    bool success = (arm_move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS);
-
-    if (success)
+    bool arm_within_bounds = arm_move_group.setJointValueTarget(arm_joint_goal);
+    if (!arm_within_bounds)
     {
-      RCLCPP_INFO(get_logger(), "Planning successful, executing the movement");
+      RCLCPP_WARN(get_logger(),
+                  "Target joint position(s) were outside of limits, but we will plan and clamp to the limits ");
+      return;
+    }
+
+    moveit::planning_interface::MoveGroupInterface::Plan arm_plan;
+    bool arm_plan_success = (arm_move_group.plan(arm_plan) == moveit::core::MoveItErrorCode::SUCCESS);
+
+    if(arm_plan_success)
+    {
+      RCLCPP_INFO(get_logger(), "Planner SUCCEED, moving the arm");
       arm_move_group.move();
     }
     else
     {
-      RCLCPP_ERROR(get_logger(), "Planning failed!");
-
-      // Print the bounds of the planning group
-      const moveit::core::JointModelGroup* joint_model_group = arm_move_group.getCurrentState()->getJointModelGroup("arm");
-
-      // Iterate through joints and retrieve joint limits
-      const std::vector<const moveit::core::JointModel*>& joint_models = joint_model_group->getActiveJointModels();
-      for (const moveit::core::JointModel* joint_model : joint_models)
-      {
-        const moveit::core::VariableBounds& bounds = joint_model->getVariableBounds(joint_model->getName());
-        RCLCPP_INFO(get_logger(), "Joint %s: min position: %f, max position: %f",
-                    joint_model->getName().c_str(), bounds.min_position_, bounds.max_position_);
-      }
-
-      result->success = false;
-      goal_handle->abort(result);
+      RCLCPP_ERROR(get_logger(), "One or more planners failed!");
       return;
     }
-
+  
     result->success = true;
     goal_handle->succeed(result);
     RCLCPP_INFO(get_logger(), "Goal succeeded");
   }
 };
-
 }  // namespace arduinobot_remote
 
 RCLCPP_COMPONENTS_REGISTER_NODE(arduinobot_remote::TaskServer)
+
+
 
 
 
