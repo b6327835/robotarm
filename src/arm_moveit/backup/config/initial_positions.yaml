@@ -1,0 +1,6 @@
+# Default initial positions for arduinobot's ros2_control fake system
+
+initial_positions:
+  x_joint: 0
+  y_joint: 0
+  z_joint: 0

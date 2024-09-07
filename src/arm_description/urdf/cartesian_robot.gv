@@ -1,0 +1,26 @@
+digraph G {
+node [shape=box];
+"main_base_link" [label="main_base_link"];
+"additional_base_link" [label="additional_base_link"];
+"x_rail" [label="x_rail"];
+"x_link" [label="x_link"];
+"y_rail" [label="y_rail"];
+"y_link" [label="y_link"];
+"z_rail" [label="z_rail"];
+"z_link" [label="z_link"];
+node [shape=ellipse, color=blue, fontcolor=blue];
+"main_base_link" -> "fixed_joint_base" [label="xyz: -0.07 0 0.61 \nrpy: 0 -0 0"]
+"fixed_joint_base" -> "additional_base_link"
+"additional_base_link" -> "fixed_x_joint_" [label="xyz: 0 0 0.2 \nrpy: 0 0 -1.5708"]
+"fixed_x_joint_" -> "x_rail"
+"x_rail" -> "x_joint" [label="xyz: 0 0 0.075 \nrpy: 0 -0 0"]
+"x_joint" -> "x_link"
+"x_link" -> "fixed_y_joint" [label="xyz: 0.075 0.15 0 \nrpy: 0 -0 0"]
+"fixed_y_joint" -> "y_rail"
+"y_rail" -> "y_joint" [label="xyz: 0.075 0 0 \nrpy: 0 -0 0"]
+"y_joint" -> "y_link"
+"y_link" -> "fixed_z_joint" [label="xyz: 0.075 0 0 \nrpy: 0 -0 0"]
+"fixed_z_joint" -> "z_rail"
+"z_rail" -> "z_joint" [label="xyz: 0.075 0 0 \nrpy: 0 -0 0"]
+"z_joint" -> "z_link"
+}
