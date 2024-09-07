@@ -29,9 +29,25 @@ target_include_directories(simple_serial_transmitter PUBLIC
 target_link_libraries(simple_serial_transmitter
  "${SERIAL_LDFLAGS}")
 
+# add_executable(stepper src/stepper.cpp)
+# ament_target_dependencies(stepper rclcpp std_msgs)
+# target_include_directories(stepper PUBLIC
+#  "${SERIAL_INCLUDE_DIRS}")
+# target_link_libraries(stepper
+#  "${SERIAL_LDFLAGS}")
+
+# add_executable(stepper2 src/stepper2.cpp)
+# ament_target_dependencies(stepper2 rclcpp std_msgs)
+# target_include_directories(stepper2 PUBLIC
+#  "${SERIAL_INCLUDE_DIRS}")
+# target_link_libraries(stepper2
+#  "${SERIAL_LDFLAGS}")
+
 install(TARGETS
   simple_serial_receiver
   simple_serial_transmitter
+  # stepper
+  # stepper2
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -41,6 +57,8 @@ install(TARGETS
 install(PROGRAMS
   ${PROJECT_NAME}/simple_serial_transmitter.py
   ${PROJECT_NAME}/simple_serial_receiver.py
+  ${PROJECT_NAME}/stepper.py
+  ${PROJECT_NAME}/stepper2.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
