@@ -1,11 +1,11 @@
 #include <FastAccelStepper.h>
 
 // Define stepper motor pins
-#define STEP_PIN_X 12
-#define DIR_PIN_X 14
-#define STEP_PIN_Y 27
-#define DIR_PIN_Y 26
-#define STEP_PIN_Z 33
+#define STEP_PIN_X 25
+#define DIR_PIN_X 4
+#define STEP_PIN_Y 26
+#define DIR_PIN_Y 18
+#define STEP_PIN_Z 19
 #define DIR_PIN_Z 32
 
 FastAccelStepperEngine engine = FastAccelStepperEngine();  // Stepper engine instance
@@ -41,13 +41,13 @@ void setup() {
     stepperZ->setAutoEnable(true);
 
     // Set max speed (steps per second) and acceleration (steps per second^2)
-    stepperX->setSpeedInHz(1000);   // Max speed in steps per second
+    stepperX->setSpeedInHz(100);   // Max speed in steps per second
     stepperX->setAcceleration(500); // Acceleration in steps per second^2
     
-    stepperY->setSpeedInHz(1000);
+    stepperY->setSpeedInHz(100);
     stepperY->setAcceleration(500);
     
-    stepperZ->setSpeedInHz(1000);
+    stepperZ->setSpeedInHz(100);
     stepperZ->setAcceleration(500);
   }
 }
