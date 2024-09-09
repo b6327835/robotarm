@@ -1,25 +1,29 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="cartesian_robot">
-<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+  <!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by
+  Stephen Brawner (brawner@gmail.com) 
      Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
      For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
-    <!-- Include Gazebo Parameters -->
-    <xacro:include filename="$(find arm_description)/urdf/arm_gazebo.xacro" />
+  <!-- Load Simulated or Real Hardware Interfaces -->
+  <xacro:arg name="is_sim" default="true" />
 
-    <!-- Include ros2_control Plugins -->
-    <xacro:include filename="$(find arm_description)/urdf/arm_ros2_control.xacro" />
+  <!-- Include Gazebo Parameters -->
+  <xacro:include filename="$(find arm_description)/urdf/arm_gazebo.xacro" />
 
-    <xacro:macro name="default_transmission" params="number">
-        <transmission name="transmission${number}">
-            <plugin>transmission_interface/SimpleTransmission</plugin>
-            <actuator name="motor${number}" role="actuator1"/>
-            <joint name="joint${number}" type="prismatic" role="joint1">
-                <mechanical_reduction>1.0</mechanical_reduction>
-            </joint>
-        </transmission>
-    </xacro:macro>
+  <!-- Include ros2_control Plugins -->
+  <xacro:include filename="$(find arm_description)/urdf/arm_ros2_control.xacro" />
 
-  <link name="world"/>
+  <xacro:macro name="default_transmission" params="number">
+    <transmission name="transmission${number}">
+      <plugin>transmission_interface/SimpleTransmission</plugin>
+      <actuator name="motor${number}" role="actuator1" />
+      <joint name="joint${number}" type="prismatic" role="joint1">
+        <mechanical_reduction>1.0</mechanical_reduction>
+      </joint>
+    </transmission>
+  </xacro:macro>
+
+  <link name="world" />
 
   <link
     name="base_link">
@@ -104,11 +108,11 @@
   </link>
 
   <joint name="virtual_joint" type="fixed">
-      <parent link="world"/>
-      <child link="base_link"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint> 
-  
+    <parent link="world" />
+    <child link="base_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+
   <joint
     name="joint1"
     type="fixed">
@@ -122,7 +126,7 @@
     <axis
       xyz="0 0 0" />
   </joint>
-  
+
   <link
     name="x_rail_Link">
     <inertial>
@@ -358,9 +362,9 @@
       velocity="0.1" />
   </joint>
 
-    <!-- Transmissions-->
-    <xacro:default_transmission number="3"/>
-    <xacro:default_transmission number="4"/>
-    <xacro:default_transmission number="5"/>
+  <!-- Transmissions-->
+  <xacro:default_transmission number="3" />
+  <xacro:default_transmission number="4" />
+  <xacro:default_transmission number="5" />
 
 </robot>
