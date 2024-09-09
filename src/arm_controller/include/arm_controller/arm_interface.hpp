@@ -16,7 +16,7 @@ namespace arm_controller
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
-class armInterface : public hardware_interface::SystemInterface
+class ArmInterface : public hardware_interface::SystemInterface
 {
 public:
   ArmInterface();
