@@ -23,6 +23,7 @@ setup(
             'simple_publisher = arm.pub:main',
             'simple_subscriber = arm.sub:main',
             'simple_parameter = arm.param:main',
+            'simple_lifecycle_node = arm.lifecycle:main'
         ],
     },
 )
