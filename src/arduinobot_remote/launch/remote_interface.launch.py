@@ -9,12 +9,12 @@ def generate_launch_description():
         executable="task_server_node",
     )
 
-    alexa_interface_node = Node(
-        package="arduinobot_remote",
-        executable="alexa_interface.py",
-    )
+    # alexa_interface_node = Node(
+    #     package="arduinobot_remote",
+    #     executable="alexa_interface.py",
+    # )
 
     return LaunchDescription([
         task_server_node,
-        alexa_interface_node
+        # alexa_interface_node
     ])

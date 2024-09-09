@@ -32,6 +32,10 @@ rclcpp_components_register_node(task_server
 )
 
 ament_python_install_package(${PROJECT_NAME})
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 install(TARGETS 
   task_server
