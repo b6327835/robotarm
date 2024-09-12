@@ -21,14 +21,14 @@ void setup() {
   pinMode(Z_DIR_PIN, OUTPUT);
   pinMode(LEDPIN,OUTPUT);
 
-  DigitalWrite(LEDPIN,HIGH);
+  digitalWrite(LEDPIN,HIGH);
 
   Serial.println("Send commands like '1X1000 2Y2000 1Z3000' to move the motors simultaneously.");
 }
 
 void loop() {
   if (Serial.available() > 0) {
-    DigitalWrite(LEDPIN,LOW);
+    digitalWrite(LEDPIN,LOW);
     String input = Serial.readStringUntil('\n');  // Read the entire line of input
     Serial.println(input);
     parseAndMove(input);  // Parse the input and move the axes simultaneously
@@ -84,7 +84,7 @@ void parseAndMove(String input) {
 
   // Move all axes simultaneously
   moveAxesSimultaneously(stepsX, stepsY, stepsZ, dirX, dirY, dirZ);
-  DigitalWrite(LEDPIN,HIGH);
+  digitalWrite(LEDPIN,HIGH);
 }
 
 // Function to move 3 axes simultaneously
