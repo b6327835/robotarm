@@ -7,8 +7,8 @@ from ament_index_python.packages import get_package_share_directory
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import UnlessCondition
 def generate_launch_description():
-    is_sim_arg = DeclareLaunchArgument("is_sim", default_value="True")
-    is_sim = LaunchConfiguration("is_sim")    
+    is_sim = LaunchConfiguration('is_sim')
+    is_sim_arg = DeclareLaunchArgument('is_sim', default_value='True')
     robot_description = ParameterValue(
         Command(
             [
@@ -17,8 +17,8 @@ def generate_launch_description():
                     get_package_share_directory("arm_description"),
                     "urdf",
                     "arm.urdf.xacro",
-                    "is_sim:=False",
                 ),
+                " is_sim:=False",
             ]
         ),
         value_type=str,
@@ -63,7 +63,9 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            is_sim_arg,
             robot_state_publisher_node,
+            controller_manager,
             joint_state_broadcaster_spawner,
             arm_controller_spawner,
         ]

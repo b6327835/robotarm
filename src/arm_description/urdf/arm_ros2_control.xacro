@@ -14,7 +14,7 @@
     <xacro:unless value="$(arg is_sim)">
       <hardware>
         <plugin>arm_controller/ArmInterface</plugin>
-        <param name="port">/dev/ttyACM0</param><!-- /dev/ttyUSB0 -->
+        <param name="port">/dev/ttyUSB0</param><!-- /dev/ttyUSB0 -->
       </hardware>
     </xacro:unless>
 

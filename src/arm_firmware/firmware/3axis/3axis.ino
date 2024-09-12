@@ -28,7 +28,7 @@ void setup() {
 
 void loop() {
   if (Serial.available() > 0) {
-    digitalWrite(LEDPIN,LOW);
+    digitalWrite(LEDPIN,HIGH);
     String input = Serial.readStringUntil('\n');  // Read the entire line of input
     Serial.println(input);
     parseAndMove(input);  // Parse the input and move the axes simultaneously
@@ -84,7 +84,7 @@ void parseAndMove(String input) {
 
   // Move all axes simultaneously
   moveAxesSimultaneously(stepsX, stepsY, stepsZ, dirX, dirY, dirZ);
-  digitalWrite(LEDPIN,HIGH);
+  digitalWrite(LEDPIN,LOW);
 }
 
 // Function to move 3 axes simultaneously
