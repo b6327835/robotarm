@@ -153,22 +153,22 @@ std::string msg;
 float x = position_commands_.at(0); // X-coordinate
 msg.append("x");
 msg.append(std::to_string(x));
-msg.append(",");
+msg.append(" ");
 
 float y = position_commands_.at(1); // Y-coordinate
 msg.append("y");
 msg.append(std::to_string(y));
-msg.append(",");
+msg.append(" ");
 
 float z = position_commands_.at(2); // Z-coordinate
 msg.append("z");
 msg.append(std::to_string(z));
-msg.append(",");
+msg.append(" ");
 // Vacuum control (on/off as a binary state)
 int vacuum = static_cast<int>(position_commands_.at(3)); // 1 for on, 0 for off
 msg.append("v");
 msg.append(std::to_string(vacuum));
-msg.append(",");
+msg.append(" ");
 // Gripper control, if applicable
 // int gripper = static_cast<int>((position_commands_.at(3) * 100)); // Scale for gripper (e.g., percentage)
 // msg.append("g");
@@ -179,7 +179,13 @@ msg.append(",");
   try
   {
     RCLCPP_INFO_STREAM(rclcpp::get_logger("ArmInterface"), "Sending new command " << msg);
+    if (!arduino_.IsOpen())
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("ArmInterface"), "Serial port is not open");
+      return hardware_interface::return_type::ERROR;
+    }
     arduino_.Write(msg);
+    RCLCPP_INFO(rclcpp::get_logger("ArmInterface"), "Command sent successfully.");
   }
   catch (...)
   {

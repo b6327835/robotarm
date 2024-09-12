@@ -31,17 +31,17 @@ def generate_launch_description():
             launch_arguments={"is_sim": "True"}.items()
         )
     
-    # remote_interface = IncludeLaunchDescription(
-    #         os.path.join(
-    #             get_package_share_directory("arm_remote"),
-    #             "launch",
-    #             "remote_interface.launch.py"
-    #         ),
-    #     )
+    remote_interface = IncludeLaunchDescription(
+            os.path.join(
+                get_package_share_directory("arduinobot_remote"),
+                "launch",
+                "remote_interface.launch.py"
+            ),
+        )
     
     return LaunchDescription([
         gazebo,
         controller,
         moveit,
-        # remote_interface,
+        remote_interface,
     ])
