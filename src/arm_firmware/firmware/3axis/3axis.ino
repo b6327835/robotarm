@@ -5,6 +5,7 @@
 #define Z_STEP_PIN 27  // Pin connected to the Z-axis optocoupler
 #define Z_DIR_PIN 19   // Pin for Z-axis direction control
 #define LEDPIN 2
+
 int pulseDelay = 100;  // Delay in microseconds between pulses (adjust for speed)
 
 void setup() {
@@ -18,24 +19,18 @@ void setup() {
   pinMode(Y_DIR_PIN, OUTPUT);
   pinMode(Z_STEP_PIN, OUTPUT);
   pinMode(Z_DIR_PIN, OUTPUT);
-<<<<<<< HEAD
-=======
   pinMode(LEDPIN,OUTPUT);
-  digitalWrite(LEDPIN, HIGH);
->>>>>>> 83e767c (interfece serial)
+
+  DigitalWrite(LEDPIN,HIGH);
 
   Serial.println("Send commands like '1X1000 2Y2000 1Z3000' to move the motors simultaneously.");
 }
 
 void loop() {
   if (Serial.available() > 0) {
-<<<<<<< HEAD
-    String input = Serial.readStringUntil('\n');  // Read the entire line of input
-=======
-    digitalWrite(LEDPIN, HIGH);
+    DigitalWrite(LEDPIN,LOW);
     String input = Serial.readStringUntil('\n');  // Read the entire line of input
     Serial.println(input);
->>>>>>> 83e767c (interfece serial)
     parseAndMove(input);  // Parse the input and move the axes simultaneously
   }
 
@@ -44,11 +39,7 @@ void loop() {
 
 // Function to parse the input and move the motors
 void parseAndMove(String input) {
-<<<<<<< HEAD
   // Example input: "1X1000 2Y2000 1Z3000"
-=======
-  // Example input: "1X1000 2Y2000 1Z3000" "1x1000 2y2000 1z3000"
->>>>>>> 83e767c (interfece serial)
   input.trim();  // Remove any extra spaces or newline characters
 
   // Variables to store the number of steps and directions for each axis
@@ -71,7 +62,6 @@ void parseAndMove(String input) {
 
       // Set direction and steps for each axis
       switch (axis) {
-<<<<<<< HEAD
         case 'X':
           dirX = (direction == 1) ? HIGH : LOW;
           stepsX = steps;
@@ -81,17 +71,6 @@ void parseAndMove(String input) {
           stepsY = steps;
           break;
         case 'Z':
-=======
-        case 'x':
-          dirX = (direction == 1) ? HIGH : LOW;
-          stepsX = steps;
-          break;
-        case 'y':
-          dirY = (direction == 1) ? HIGH : LOW;
-          stepsY = steps;
-          break;
-        case 'z':
->>>>>>> 83e767c (interfece serial)
           dirZ = (direction == 1) ? HIGH : LOW;
           stepsZ = steps;
           break;
@@ -105,10 +84,7 @@ void parseAndMove(String input) {
 
   // Move all axes simultaneously
   moveAxesSimultaneously(stepsX, stepsY, stepsZ, dirX, dirY, dirZ);
-<<<<<<< HEAD
-=======
-  digitalWrite(LEDPIN, LOW);
->>>>>>> 83e767c (interfece serial)
+  DigitalWrite(LEDPIN,HIGH);
 }
 
 // Function to move 3 axes simultaneously
