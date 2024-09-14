@@ -1,0 +1,10 @@
+<library path="arduinobot_controller">
+    <class name="arduinobot_controller/CartesianbotInterface"
+      type="arduinobot_controller::CartesianbotInterface"
+      base_class_type="hardware_interface::SystemInterface"
+    >
+      <description>
+      CartesianbotInterface Hardware Interface
+      </description>
+    </class>
+  </library>
