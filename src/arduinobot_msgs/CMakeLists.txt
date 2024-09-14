@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/QuaternionToEuler.srv"
   "action/Fibonacci.action"
   "action/ArduinobotTask.action"
+  "action/ArmTask.action"
 )
 
 ament_package()
