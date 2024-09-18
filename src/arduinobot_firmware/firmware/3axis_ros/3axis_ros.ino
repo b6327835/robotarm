@@ -1,5 +1,5 @@
 #define X_STEP_PIN 25  // Pin connected to the X-axis optocoupler
-#define X_DIR_PIN 4    // Pin for X-axis direction control
+#define X_DIR_PIN 5    // Pin for X-axis direction control
 #define Y_STEP_PIN 26  // Pin connected to the Y-axis optocoupler
 #define Y_DIR_PIN 18   // Pin for Y-axis direction control
 #define Z_STEP_PIN 27  // Pin connected to the Z-axis optocoupler
