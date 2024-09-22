@@ -29,7 +29,7 @@
     name="base_link">
     <inertial>
       <!-- <origin xyz="0.29184 0.032677 -0.15851" rpy="0 0 0" /> -->
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin xyz="0.29184 0.032677 -0.15851" rpy="0 0 0" />
       <mass
         value="0.25637" />
       <inertia
@@ -42,7 +42,7 @@
     </inertial>
     <visual>
       <origin
-        xyz="-0.175 -0.183 0"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
         <mesh
@@ -56,7 +56,7 @@
     </visual>
     <collision>
       <origin
-        xyz="-0.175 -0.183 0"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
         <mesh
@@ -92,7 +92,7 @@
       <material
         name="">
         <color
-          rgba="1 0.94902 0.89412 1" />
+          rgba="1 0.0 0. 1" />
       </material>
     </visual>
     <collision>
@@ -116,7 +116,7 @@
     name="joint1"
     type="fixed">
     <!--     <origin xyz="0.1741 0.18232 0.095474" rpy="1.5708 0.0036853 0" /> -->
-    <origin xyz="0.0 0.0 0.095474" rpy="1.5708 0.0036853 0" />
+    <origin xyz="0.1741 0.18232 0.095474" rpy="1.5708 0.0036853 0" />
     <parent
       link="base_link" />
     <child
@@ -183,7 +183,6 @@
   <link
     name="x_Link">
     <inertial>
-      <!-- xyz="0.4338 -0.0037341 -0.028595" -->
       <origin
         xyz="0.4338 -0.0037341 -0.028595"
         rpy="0 0 0" />
@@ -208,7 +207,7 @@
       <material
         name="">
         <color
-          rgba="1 0.0 0.0 1" />
+          rgba="1 0.94902 0.89412 1" />
       </material>
     </visual>
     <collision>
@@ -225,9 +224,8 @@
   <joint
     name="joint3"
     type="prismatic">
-    <!-- xyz="0.4338 -0.0037341 -0.028595" -->
     <origin
-      xyz="0.5 -0.067263 0.32241"
+      xyz="0.37179 -0.067263 0.32241"
       rpy="0 1.5708 3.1416" />
     <parent
       link="x_rail_Link" />
@@ -236,8 +234,8 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="0.0"
-      upper="0.240"
+      lower="-0.125"
+      upper="0.120"
       effort="1000.0"
       velocity="0.1" />
   </joint>
@@ -269,7 +267,7 @@
       <material
         name="">
         <color
-          rgba="0 1 0.0 1" />
+          rgba="1 0.94902 0.89412 1" />
       </material>
     </visual>
     <collision>
@@ -286,9 +284,8 @@
   <joint
     name="joint4"
     type="prismatic">
-    <!-- xyz="0.40246 0.019644 -0.0080109" -->
     <origin
-      xyz="0.37 0.019644 -0.0080109"
+      xyz="0.40246 0.019644 -0.0080109"
       rpy="3.1416 0 0" />
     <parent
       link="x_Link" />
@@ -297,8 +294,8 @@
     <axis
       xyz="1 0 0" />
     <limit
-      lower="0"
-      upper="0.150"
+      lower="-0.051"
+      upper="0.118"
       effort="1000.0"
       velocity="0.1" />
   </joint>
@@ -330,7 +327,7 @@
       <material
         name="">
         <color
-          rgba="0.0 0.0 1 1" />
+          rgba="0.79216 0.81961 0.93333 1" />
       </material>
     </visual>
     <collision>
@@ -348,17 +345,17 @@
     name="joint5"
     type="prismatic">
     <origin
-      xyz="0.009476 0.00 -0.070619"
+      xyz="0.009476 0.067985 -0.070619"
       rpy="0 0 -1.5708" />
     <parent
       link="y_Link" />
     <child
       link="z_Link" />
     <axis
-      xyz="-1 0 0" />
+      xyz="1 0 0" />
     <limit
-      lower="0"
-      upper="0.120"
+      lower="-0.054"
+      upper="0.115"
       effort="1000.0"
       velocity="0.1" />
   </joint>
