@@ -96,9 +96,9 @@ CallbackReturn ArduinobotInterface::on_activate(const rclcpp_lifecycle::State &p
   RCLCPP_INFO(rclcpp::get_logger("ArduinobotInterface"), "Starting robot hardware ...");
 
   // Reset commands and states
-  position_commands_ = { -0.125, -0.0509, -0.054};
-  prev_position_commands_ = { -0.125, -0.0509, -0.054};
-  position_states_ = { -0.125, -0.0509, -0.054};
+  position_commands_ = { 0,0,0};
+  prev_position_commands_ = { 0,0,0};
+  position_states_ = { 0,0,0};
 
   try
   {
