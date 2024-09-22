@@ -153,7 +153,7 @@ namespace cartesianbot_controller
         // Z axis
         msg.append("z");
         msg.append(std::to_string(static_cast<int>(position_commands_[2] * 1000))); // Convert to mm
-        msg.append(",");
+        //msg.append(",");
 
         try
         {

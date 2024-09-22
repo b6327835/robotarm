@@ -13,30 +13,30 @@
       <hardware>
         <!-- <plugin>arduinobot_controller/ArduinobotInterface</plugin> -->
         <plugin>arduinobot_controller/ArduinobotInterface</plugin>
-        <param name="port">/dev/ttyUSB0</param>
+        <param name="port">/dev/ttyACM0</param>
       </hardware>
     </xacro:unless>
 
     <joint name="joint3">
       <command_interface name="position">
-        <param name="min">-0.125</param>
-        <param name="max">0.120</param>
+        <param name="min">0</param>
+        <param name="max">0.240</param>
       </command_interface>
       <state_interface name="position" />
     </joint>
 
     <joint name="joint4">
       <command_interface name="position">
-        <param name="min">-0.051</param>
-        <param name="max">0.118</param>
+        <param name="min">0</param>
+        <param name="max">0.150</param>
       </command_interface>
       <state_interface name="position" />
     </joint>
 
     <joint name="joint5">
       <command_interface name="position">
-        <param name="min">-0.054</param>
-        <param name="max">0.115</param>
+        <param name="min">0</param>
+        <param name="max">0.120</param>
       </command_interface>
       <state_interface name="position" />
     </joint>

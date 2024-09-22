@@ -96,9 +96,9 @@ CallbackReturn ArduinobotInterface::on_activate(const rclcpp_lifecycle::State &p
   RCLCPP_INFO(rclcpp::get_logger("ArduinobotInterface"), "Starting robot hardware ...");
 
   // Reset commands and states
-  position_commands_ = { 0.0, 0.0, 0.0};
-  prev_position_commands_ = { 0.0, 0.0, 0.0};
-  position_states_ = { 0.0, 0.0, 0.0};
+  position_commands_ = { 0,0,0};
+  prev_position_commands_ = { 0,0,0};
+  position_states_ = { 0,0,0};
 
   try
   {
@@ -170,7 +170,7 @@ hardware_interface::return_type ArduinobotInterface::write(const rclcpp::Time &t
   // Z axis
   msg.append("z");
   msg.append(std::to_string(static_cast<int>(position_commands_[2] * 1000))); // Convert to mm
-  msg.append(",");
+  //msg.append(",");
 
   // int gripper = static_cast<int>(((-position_commands_.at(3)) * 180) / (M_PI / 2)); // Keeping the gripper control
   // msg.append("g");
@@ -182,7 +182,7 @@ hardware_interface::return_type ArduinobotInterface::write(const rclcpp::Time &t
   // msg.append("v");
   // msg.append(std::to_string(vacuum));
   // msg.append(" ");
-  RCLCPP_INFO_STREAM(rclcpp::get_logger("ArduinobotInterface"), "Full message: " << msg);
+  // RCLCPP_INFO_STREAM(rclcpp::get_logger("ArduinobotInterface"), "Full message: " << msg);
 
   try
   {
