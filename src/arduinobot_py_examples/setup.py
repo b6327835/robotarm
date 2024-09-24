@@ -27,6 +27,7 @@ setup(
             'simple_service_client = arduinobot_py_examples.simple_service_client:main',
             'simple_action_server = arduinobot_py_examples.simple_action_server:main',
             'simple_action_client = arduinobot_py_examples.simple_action_client:main',
+            'arm_client = arduinobot_py_examples.arm_client:main',
         ],
     },
 )

@@ -7,7 +7,7 @@
 #define LEDPIN 2
 
 int pulseDelay = 100;   // Delay in microseconds between pulses (adjust for speed)
-float stepsPerMM = 10.0;  // Conversion factor: steps per mm (adjust based on your setup)
+float stepsPerMM = 100.0;  // Conversion factor: steps per mm (adjust based on your setup)
 int directionDelay = 5;   // Delay in milliseconds to allow direction change to take effect
 
 // Variables to store last known positions in mm
