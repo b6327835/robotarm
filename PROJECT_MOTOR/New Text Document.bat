@@ -1,1 +1,0 @@
-pyuic5 -x UI_TESTTING.ui -o UI_TESTTING.py
