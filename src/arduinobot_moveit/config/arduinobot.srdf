@@ -29,9 +29,9 @@
         <joint name="joint5" value="0.120"/>
     </group_state>
     <group_state name="default" group="arm">
-        <joint name="joint3" value="0"/>
-        <joint name="joint4" value="0"/>
-        <joint name="joint5" value="0"/>
+        <joint name="joint3" value="0.12"/>
+        <joint name="joint4" value="0.075"/>
+        <joint name="joint5" value="0.06"/>
     </group_state>
     <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
     <!--<virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>-->

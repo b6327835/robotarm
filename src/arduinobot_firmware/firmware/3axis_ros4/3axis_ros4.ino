@@ -30,18 +30,23 @@ volatile long targetX = 0;
 volatile long targetY = 0;
 volatile long targetZ = 0;
 
-// Timer for debouncing command execution
-unsigned long lastCommandTime = 0;
-const unsigned long debounceDelay = 1000;  // 1 second debounce delay
-
 bool homed = true;
 
 // Timer for controlling stepper pulses
-hw_timer_t *timer = NULL;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+hw_timer_t * stepperTimer = NULL;
+portMUX_TYPE stepperTimerMux = portMUX_INITIALIZER_UNLOCKED;
 
-void IRAM_ATTR onTimer() {
-  portENTER_CRITICAL_ISR(&timerMux);
+// Timer for command execution delay
+hw_timer_t * commandTimer = NULL;
+volatile bool commandPending = false;
+unsigned long lastCommandTime = 0;
+const unsigned long COMMAND_DELAY = 1000000; // 1 second in microseconds
+
+// Latest command storage
+String latestCommand = "";
+
+void IRAM_ATTR onStepperTimer() {
+  portENTER_CRITICAL_ISR(&stepperTimerMux);
   
   // X axis
   if (currentX != targetX) {
@@ -70,7 +75,11 @@ void IRAM_ATTR onTimer() {
     currentZ += (currentZ < targetZ) ? 1 : -1;
   }
 
-  portEXIT_CRITICAL_ISR(&timerMux);
+  portEXIT_CRITICAL_ISR(&stepperTimerMux);
+}
+
+void IRAM_ATTR onCommandTimer() {
+  commandPending = true;
 }
 
 void setup() {
@@ -86,16 +95,20 @@ void setup() {
   pinMode(X_LIMIT_PIN, INPUT_PULLUP);
   pinMode(Y_LIMIT_PIN, INPUT_PULLUP);
   pinMode(Z_LIMIT_PIN, INPUT_PULLUP);
-
   pinMode(LEDPIN, OUTPUT);
 
-  // Set up timer interrupt
-  timer = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 100, true);  // 100 microseconds = 10kHz
-  timerAlarmEnable(timer);
+  // Set up stepper timer interrupt
+  stepperTimer = timerBegin(0, 80, true);
+  timerAttachInterrupt(stepperTimer, &onStepperTimer, true);
+  timerAlarmWrite(stepperTimer, 100, true);  // 100 microseconds = 10kHz
+  timerAlarmEnable(stepperTimer);
 
-  // Initialize positions
+  // Set up command timer interrupt
+  commandTimer = timerBegin(1, 80, true);
+  timerAttachInterrupt(commandTimer, &onCommandTimer, true);
+  timerAlarmWrite(commandTimer, COMMAND_DELAY, true);
+  timerAlarmDisable(commandTimer);
+
   currentX = 0;
   targetX = 0;
   currentY = 0;
@@ -103,9 +116,7 @@ void setup() {
   currentZ = 0;
   targetZ = 0;
 
-  // Home the machine
   digitalWrite(LEDPIN, HIGH);
-  //homeAxis();  // Uncomment this when you want to home the machine
 }
 
 void loop() {
@@ -114,23 +125,30 @@ void loop() {
     digitalWrite(LEDPIN, LOW);
     Serial.print("Received cmd: ");
     Serial.println(command);
-    processCommand(command);
-    digitalWrite(LEDPIN, HIGH);
-
-    // Update the last command time
-    lastCommandTime = millis();
+    
+    // Store the latest command
+    latestCommand = command;
+    
+    // Reset and start the command timer
+    timerAlarmDisable(commandTimer);
+    timerAlarmEnable(commandTimer);
+    
+    lastCommandTime = micros();
   }
 
-  // Check if the debounce timer has expired
-  if ((millis() - lastCommandTime) > debounceDelay) {
-    moveSteppers();
+  // Check if it's time to execute the command
+  if (commandPending && (micros() - lastCommandTime >= COMMAND_DELAY)) {
+    commandPending = false;
+    timerAlarmDisable(commandTimer);
+    processCommand(latestCommand);
+    digitalWrite(LEDPIN, HIGH);
   }
 }
 
 void homeAxis() {
   Serial.println("Moving to home position...");
   // Disable timer interrupt during homing
-  timerAlarmDisable(timer);
+  timerAlarmDisable(stepperTimer);
 
   // Home Z axis
   while (digitalRead(Z_LIMIT_PIN) == HIGH) {
@@ -169,7 +187,7 @@ void homeAxis() {
   Serial.println("Homing complete");
 
   // Re-enable timer interrupt
-  timerAlarmEnable(timer);
+  timerAlarmEnable(stepperTimer);
 }
 
 void processCommand(String command) {
@@ -206,18 +224,22 @@ void processCommand(String command) {
     startIndex = endIndex + 1;
   }
   
-  // Convert mm to steps and set the target
-  if (x != -1) targetX = constrain(x * 80, 0, X_MAX_TRAVEL);
-  if (y != -1) targetY = constrain(y * 80, 0, Y_MAX_TRAVEL);
-  if (z != -1) targetZ = constrain(z * 80, 0, Z_MAX_TRAVEL);
+  // Convert mm to steps and move immediately
+  if (x != -1) moveAxis(x * 80, X_MAX_TRAVEL, targetX);
+  if (y != -1) moveAxis(y * 80, Y_MAX_TRAVEL, targetY);
+  if (z != -1) moveAxis(z * 80, Z_MAX_TRAVEL, targetZ);
   
-  Serial.print("Parsed cmd: ");
-  Serial.print("x:"); Serial.print(x);
-  Serial.print(" y:"); Serial.print(y);
-  Serial.print(" z:"); Serial.println(z);
+  Serial.print("Executing cmd: ");
+  Serial.print("x:");Serial.print(x);
+  Serial.print(" y:");Serial.print(y);
+  Serial.print(" z:");Serial.println(z);
 }
 
-void moveSteppers() {
-  // Allow stepper movement by setting target positions in the timer interrupt
-  timerAlarmEnable(timer);
+void moveAxis(long targetPosition, long maxTravel, volatile long &axisTarget) {
+  if (targetPosition < 0 || targetPosition > maxTravel) {
+    Serial.println("Error: Position out of bounds");
+    return;
+  }
+  
+  axisTarget = targetPosition;
 }
