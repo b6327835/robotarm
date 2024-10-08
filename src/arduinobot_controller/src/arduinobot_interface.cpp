@@ -170,7 +170,7 @@ hardware_interface::return_type ArduinobotInterface::write(const rclcpp::Time &t
   // Z axis
   msg.append("z");
   msg.append(std::to_string(static_cast<int>(position_commands_[2] * 1000))); // Convert to mm
-  //msg.append(",");
+  msg.append(",");
 
   // int gripper = static_cast<int>(((-position_commands_.at(3)) * 180) / (M_PI / 2)); // Keeping the gripper control
   // msg.append("g");

@@ -22,4 +22,4 @@ arm_controller:
       - position
 
     open_loop_control: true
-    allow_integration_in_goal_trajectories: true
+    allow_integration_in_goal_trajectories: false
