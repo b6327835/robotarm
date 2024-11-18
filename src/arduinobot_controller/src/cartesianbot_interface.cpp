@@ -144,15 +144,15 @@ namespace cartesianbot_controller
         std::string msg;
         // X axis
         msg.append("x");
-        msg.append(std::to_string(static_cast<int>(position_commands_[0] * 1000))); // Convert to mm
+        msg.append(std::to_string(position_commands_[0] * 1000.0)); // Convert to mm with decimal precision
         msg.append(",");
         // Y axis
         msg.append("y");
-        msg.append(std::to_string(static_cast<int>(position_commands_[1] * 1000))); // Convert to mm
+        msg.append(std::to_string(position_commands_[1] * 1000.0)); // Convert to mm with decimal precision
         msg.append(",");
         // Z axis
         msg.append("z");
-        msg.append(std::to_string(static_cast<int>(position_commands_[2] * 1000))); // Convert to mm
+        msg.append(std::to_string(position_commands_[2] * 1000.0)); // Convert to mm with decimal precision
         msg.append(",");
 
         try
