@@ -157,7 +157,7 @@ namespace cartesianbot_controller
 
         try
         {
-            RCLCPP_INFO_STREAM(rclcpp::get_logger("CartesianbotInterface"), "Sending new command " << msg);
+            RCLCPP_INFO_STREAM(rclcpp::get_logger("CartesianbotInterface"), "(Cartesian bot)Sending new command " << msg);
             arduino_.Write(msg);
         }
         catch (...)

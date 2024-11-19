@@ -11,7 +11,7 @@ ArduinobotInterface::ArduinobotInterface()
 }
 
 
-std::string format_double(double value, int precision = 3)
+std::string format_double(double value, int precision = 2)
 {
   std::ostringstream stream;
   stream << std::fixed << std::setprecision(precision) << value;
@@ -158,35 +158,48 @@ hardware_interface::return_type ArduinobotInterface::write(const rclcpp::Time &t
     return hardware_interface::return_type::OK;
   }
 
-  // Validate coordinates
-  for (const auto& pos : position_commands_) {
-    if (!std::isfinite(pos)) {
-      RCLCPP_ERROR(rclcpp::get_logger("ArduinobotInterface"), "Invalid position value detected");
-      return hardware_interface::return_type::ERROR;
-    }
-  }
+  std::string msg;
+  // X axis
+  msg.append("x");
+  msg.append(std::to_string(static_cast<int>(position_commands_[0] * 1000))); // Convert to mm
+  msg.append(",");
+  // Y axis
+  msg.append("y");
+  msg.append(std::to_string(static_cast<int>(position_commands_[1] * 1000))); // Convert to mm
+  msg.append(",");
+  // Z axis
+  msg.append("z");
+  msg.append(std::to_string(static_cast<int>(position_commands_[2] * 1000))); // Convert to mm
+  msg.append(",");
 
-  std::stringstream msg;
-  // Convert to millimeters with 3 decimal places precision
-  msg << "x" << std::fixed << std::setprecision(3) << (position_commands_[0] * 1000.0) << ","
-      << "y" << std::fixed << std::setprecision(3) << (position_commands_[1] * 1000.0) << ","
-      << "z" << std::fixed << std::setprecision(3) << (position_commands_[2] * 1000.0) << ",";
+  // int gripper = static_cast<int>(((-position_commands_.at(3)) * 180) / (M_PI / 2)); // Keeping the gripper control
+  // msg.append("g");
+  // msg.append(std::to_string(gripper));
+  // msg.append(",");
+
+  // Vacuum control (on/off as a binary state)
+  // int vacuum = static_cast<int>(position_commands_.at(3)); // 1 for on, 0 for off
+  // msg.append("v");
+  // msg.append(std::to_string(vacuum));
+  // msg.append(" ");
+  // RCLCPP_INFO_STREAM(rclcpp::get_logger("ArduinobotInterface"), "Full message: " << msg);
 
   try
   {
-    std::string command = msg.str();
-    RCLCPP_INFO_STREAM(rclcpp::get_logger("ArduinobotInterface"), 
-                      "(Arduino_bot) Sending command: " << command);
-    arduino_.Write(command);
-    prev_position_commands_ = position_commands_;
-    return hardware_interface::return_type::OK;
+    RCLCPP_INFO_STREAM(rclcpp::get_logger("ArduinobotInterface"), "(Arduino_bot)Sending new command " << msg);
+    arduino_.Write(msg);
   }
-  catch (const std::exception& e)
+  catch (...)
   {
     RCLCPP_ERROR_STREAM(rclcpp::get_logger("ArduinobotInterface"),
-                       "Failed to send command: " << e.what());
+                        "Something went wrong while sending the message "
+                            << msg << " to the port " << port_);
     return hardware_interface::return_type::ERROR;
   }
+
+  prev_position_commands_ = position_commands_;
+
+  return hardware_interface::return_type::OK;
 }
 }  // namespace arduinobot_controller
 
