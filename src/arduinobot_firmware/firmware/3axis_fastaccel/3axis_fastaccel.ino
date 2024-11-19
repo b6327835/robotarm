@@ -42,10 +42,6 @@ void setup() {
     stepperX->setDirectionPin(X_DIR_PIN);
     stepperY->setDirectionPin(Y_DIR_PIN);
     stepperZ->setDirectionPin(Z_DIR_PIN);
-    
-    Serial.println("ARM66SAK Cartesian Controller Ready");
-    Serial.println("Enter coordinates as 'X,Y,Z'");
-    Serial.println("Example: '100.0,50.0,25.0'");
   } else {
     Serial.println("Error initializing steppers!");
   }
@@ -56,7 +52,33 @@ int32_t mmToSteps(float mm, float stepsPerMm) {
   return (int32_t)(mm * stepsPerMm + 0.5f); // Added 0.5 for proper rounding
 }
 
-// Function to move to absolute position with dynamic parameters
+// Updated function to parse coordinates
+bool parseCoordinates(String input, float &x, float &y, float &z) {
+  // Ensure input ends with comma for consistent parsing
+  if (!input.endsWith(",")) {
+    input += ",";
+  }
+  
+  // Find the position of x, y, z markers
+  int xPos = input.indexOf('x');
+  int yPos = input.indexOf('y');
+  int zPos = input.indexOf('z');
+  
+  if (xPos == -1 || yPos == -1 || zPos == -1) {
+    Serial.println("Error: Invalid coordinate format");
+    return false;
+  }
+  
+  // Extract and validate values
+  x = input.substring(xPos + 1, yPos).toFloat();
+  y = input.substring(yPos + 1, zPos).toFloat();
+  z = input.substring(zPos + 1, input.indexOf(',')).toFloat();
+  
+  // Debug output
+  Serial.printf("Parsed coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
+  return true;
+}
+
 void moveToPosition(float x, float y, float z, float microstepping, float leadScrewPitch, int32_t maxSpeed, int32_t acceleration) {
   float stepsPerMm = (STEPS_PER_REV * microstepping) / leadScrewPitch;
 
@@ -74,38 +96,25 @@ void moveToPosition(float x, float y, float z, float microstepping, float leadSc
   int32_t ySteps = mmToSteps(y, stepsPerMm);
   int32_t zSteps = mmToSteps(z, stepsPerMm);
   
-  // Log the movement
-  Serial.printf("Moving to X:%.2f Y:%.2f Z:%.2f (steps: %d,%d,%d)\n", 
-                x, y, z, xSteps, ySteps, zSteps);
+  // Debug output for steps calculation
+  Serial.printf("Steps per mm: %.2f\n", stepsPerMm);
+  Serial.printf("Target steps - X:%d Y:%d Z:%d\n", xSteps, ySteps, zSteps);
   
   // Move all motors to target positions
   stepperX->moveTo(xSteps);
   stepperY->moveTo(ySteps);
   stepperZ->moveTo(zSteps);
   
-  // Wait until all steppers are in position
+  // Monitor movement with debug output
   while (stepperX->isRunning() || stepperY->isRunning() || stepperZ->isRunning()) {
-    delay(1);  // Small delay to prevent watchdog reset
+    Serial.printf("Current positions - X:%d Y:%d Z:%d\n", 
+                 stepperX->getCurrentPosition(),
+                 stepperY->getCurrentPosition(),
+                 stepperZ->getCurrentPosition());
+    delay(100);  // Increased delay for readable debug output
   }
   
   Serial.println("Movement complete");
-}
-
-// Function to parse coordinates
-bool parseCoordinates(String input, float &x, float &y, float &z) {
-  int firstComma = input.indexOf(',');
-  int secondComma = input.indexOf(',', firstComma + 1);
-  
-  if (firstComma == -1 || secondComma == -1) {
-    Serial.println("Invalid format. Use X,Y,Z");
-    return false;
-  }
-  
-  x = input.substring(0, firstComma).toFloat();
-  y = input.substring(firstComma + 1, secondComma).toFloat();
-  z = input.substring(secondComma + 1).toFloat();
-  
-  return true;
 }
 
 void loop() {
