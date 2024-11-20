@@ -45,6 +45,11 @@ const float MAX_X = 10.0;
 const float MAX_Y = 6.5;
 const float MAX_Z = 7.1;
 
+// ROS coordinate system limits
+const float ROS_MAX_X = 240.0;
+const float ROS_MAX_Y = 150.0;
+const float ROS_MAX_Z = 120.0;
+
 void setup() {
   Serial.begin(250000);
   
@@ -75,6 +80,13 @@ void setup() {
 // Convert millimeters to steps with improved precision
 int32_t mmToSteps(float mm, float stepsPerMm) {
   return (int32_t)(mm * stepsPerMm + 0.5f); // Added 0.5 for proper rounding
+}
+
+// Map ROS coordinates to robot coordinates
+void mapROStoRobot(float &x, float &y, float &z) {
+    x = (x / ROS_MAX_X) * MAX_X;
+    y = (y / ROS_MAX_Y) * MAX_Y;
+    z = (z / ROS_MAX_Z) * MAX_Z;
 }
 
 // Updated function to parse coordinates
@@ -120,9 +132,14 @@ bool parseCoordinates(String input, float &x, float &y, float &z) {
   y = yStr.toFloat();
   z = zStr.toFloat();
   
+  // Map ROS coordinates to robot coordinates
+  mapROStoRobot(x, y, z);
+  
   // Debug output
   Serial.printf("Raw substrings - X:'%s' Y:'%s' Z:'%s'\n", xStr.c_str(), yStr.c_str(), zStr.c_str());
   Serial.printf("Parsed coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
+  Serial.printf("ROS coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x * (ROS_MAX_X/MAX_X), y * (ROS_MAX_Y/MAX_Y), z * (ROS_MAX_Z/MAX_Z));
+  Serial.printf("Mapped coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
   
   return true;
 }
