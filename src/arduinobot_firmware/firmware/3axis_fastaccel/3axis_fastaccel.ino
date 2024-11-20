@@ -51,7 +51,7 @@ const float ROS_MAX_Y = 150.0;
 const float ROS_MAX_Z = 120.0;
 
 void setup() {
-  Serial.begin(250000);
+  Serial.begin(115200);
   
   // Initialize engine
   engine.init();
@@ -97,30 +97,30 @@ bool parseCoordinates(String input, float &x, float &y, float &z) {
     input += ",";
   }
   
-  // Find the position of coordinate markers
-  int xStart = input.indexOf('x') + 1;
-  int yStart = input.indexOf('y') + 1;
-  int zStart = input.indexOf('z') + 1;
+  // Find the last set of coordinates
+  int lastX = input.lastIndexOf('x');
+  int lastY = input.lastIndexOf('y');
+  int lastZ = input.lastIndexOf('z');
   
-  if (xStart <= 0 || yStart <= 0 || zStart <= 0) {
+  if (lastX == -1 || lastY == -1 || lastZ == -1) {
     Serial.println("Error: Missing coordinate markers");
     return false;
   }
   
   // Find the end positions (next marker or comma)
-  int xEnd = input.indexOf('y');
-  int yEnd = input.indexOf('z');
-  int zEnd = input.indexOf(',', zStart);
+  int xEnd = input.indexOf('y', lastX);
+  int yEnd = input.indexOf('z', lastY);
+  int zEnd = input.indexOf(',', lastZ);
   
   if (xEnd == -1 || yEnd == -1 || zEnd == -1) {
     Serial.println("Error: Invalid coordinate format");
     return false;
   }
   
-  // Extract and clean substrings
-  String xStr = input.substring(xStart, xEnd);
-  String yStr = input.substring(yStart, yEnd);
-  String zStr = input.substring(zStart, zEnd);
+  // Extract and clean substrings for the last set of coordinates
+  String xStr = input.substring(lastX + 1, xEnd);
+  String yStr = input.substring(lastY + 1, yEnd);
+  String zStr = input.substring(lastZ + 1, zEnd);
   
   // Remove any trailing commas
   xStr.replace(",", "");
@@ -270,9 +270,23 @@ void homeAxis() {
   isHomed = true;
 }
 
+void moveToMax() {
+  Serial.println("Moving to maximum position...");
+  
+  // Move X axis first
+  moveToPosition(MAX_X, 0, 0, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+  // Then Y axis
+  moveToPosition(MAX_X, MAX_Y, 0, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+  // Finally Z axis
+  moveToPosition(MAX_X, MAX_Y, MAX_Z, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+  
+  Serial.println("Reached maximum position!");
+}
+
 void loop() {
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
+    input.trim();  // Remove any whitespace
     
     // Check if homing is needed
     if (!isHomed) {
@@ -282,6 +296,18 @@ void loop() {
       return;
     }
     
+    // Handle commands
+    if (input.equals("HOME")) {
+      homeAxis();
+      return;
+    }
+    
+    if (input.equals("MAX")) {
+      moveToMax();
+      return;
+    }
+    
+    // Handle coordinate input
     float x, y, z;
     if (parseCoordinates(input, x, y, z)) {
       moveToPosition(x, y, z, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
