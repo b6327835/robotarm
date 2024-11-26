@@ -26,8 +26,8 @@ const uint32_t HOMING_TIMEOUT = 10000;  // 10 seconds timeout
 
 // Add homing state variable
 bool isHomed = false;
-const int32_t HOMING_SPEED = 20000;     // Increased from 20000 for smoother motion
-const int32_t HOMING_ACCEL = 90000;     // Reduced from 320000 for gentler starts
+const int32_t HOMING_SPEED = 20000;   // Reduced from 20000 for more precise stopping
+const int32_t HOMING_ACCEL = 90000;  // Reduced for gentler movement
 const int32_t BACKOFF_STEPS = 0;      // Steps to back off after hitting limit
 
 // Motor Configuration Constants
@@ -49,6 +49,9 @@ const float MAX_Z = 7.1;
 const float ROS_MAX_X = 240.0;
 const float ROS_MAX_Y = 150.0;
 const float ROS_MAX_Z = 120.0;
+
+const int DEBOUNCE_DELAY = 10;       // Reduced from 50ms to 10ms
+const int CONSISTENT_READINGS = 3;    // Reduced from 5 to 3
 
 void setup() {
   Serial.begin(115200);
@@ -207,29 +210,53 @@ void blinkError() {
 bool homeOneAxis(FastAccelStepper* stepper, int limitPin, const char* axisName) {
   Serial.printf("Homing %s axis...\n", axisName);
   uint32_t startTime = millis();
+  int consistentCount = 0;
+  bool lastReading = HIGH;
   
   // Set direction for continuous movement
   stepper->setSpeedInHz(HOMING_SPEED);
   stepper->setAcceleration(HOMING_ACCEL);
-  stepper->moveTo(-100000); // Move a large distance in negative direction
+  stepper->moveTo(-100000);
   
-  // Monitor movement until limit switch is hit
-  while (digitalRead(limitPin) == HIGH) {
+  while (consistentCount < CONSISTENT_READINGS) {
+    bool currentReading = digitalRead(limitPin);
+    
+    // Immediately stop if limit switch is hit
+    if (currentReading == LOW) {
+      if (lastReading == LOW) {
+        consistentCount++;
+      }
+    } else {
+      consistentCount = 0;
+    }
+    
+    if (consistentCount == 1) {  // First consistent LOW reading
+      stepper->forceStop();      // Emergency stop when limit is first detected
+    }
+    
+    lastReading = currentReading;
+    
     if (millis() - startTime > HOMING_TIMEOUT) {
       Serial.printf("Error: %s axis homing timeout!\n", axisName);
       stepper->forceStop();
       return false;
     }
-    delay(1);
+    
+    delayMicroseconds(500);  // Minimal delay for switch stability
   }
   
-  // Stop smoothly when limit is hit
   stepper->forceStopAndNewPosition(0);
   
+  // Quick verification
+  delayMicroseconds(1000);
+  if (digitalRead(limitPin) == HIGH) {
+    Serial.printf("Error: %s axis lost limit switch contact!\n", axisName);
+    return false;
+  }
+  
   if (BACKOFF_STEPS > 0) {
-    // Optional: Move away from limit switch if BACKOFF_STEPS is set
     stepper->moveTo(BACKOFF_STEPS);
-    while (stepper->isRunning()) delay(1);
+    while (stepper->isRunning()) delayMicroseconds(500);
   }
   
   return true;
