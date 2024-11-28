@@ -9,7 +9,7 @@ class VideoThread(QThread):
 
     def __init__(self):
         super().__init__()
-        self.detect_mode = "red"  # Default mode for round white objects
+        self.detect_mode = "white"  # Default mode for round white objects
         self.cap = cv2.VideoCapture(0)
         
         if not self.cap.isOpened():
@@ -109,9 +109,9 @@ class VideoThread(QThread):
                 hsv_img = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
                 if self.detect_mode == "white":
-                    # Define white color range with tighter thresholds
-                    lower_color = np.array([0, 0, 167])
-                    upper_color = np.array([95, 40, 255])
+                    # Define white color range with updated thresholds
+                    lower_color = np.array([0, 0, 185])
+                    upper_color = np.array([95, 255, 255])
                 elif self.detect_mode == "red":
                     # Define red color range (red wraps around in HSV)
                     lower_color1 = np.array([0, 120, 70])
@@ -130,8 +130,8 @@ class VideoThread(QThread):
                 if self.detect_mode == "white":
                     color_mask = cv2.inRange(hsv_img, lower_color, upper_color)
                 
-                # Add morphological operations to clean up the mask
-                kernel = np.ones((7,7), np.uint8)
+                # Add morphological operations with updated kernel size
+                kernel = np.ones((8,8), np.uint8)
                 color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel)
                 color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
                 
@@ -141,14 +141,14 @@ class VideoThread(QThread):
 
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if 20 <= area <= 400:  # Updated area thresholds
+                    if 202 <= area <= 900:  # Updated area thresholds
                         # Rest of the contour processing
                         perimeter = cv2.arcLength(contour, True)
                         if perimeter > 0:
                             circularity = 4 * np.pi * area / (perimeter * perimeter)
                             
-                            # Only process if the shape is roughly circular (circularity > 0.6)
-                            if circularity > 0.6:
+                            # Updated circularity threshold to 0.6
+                            if circularity > 0.70:
                                 M = cv2.moments(contour)
                                 if M['m00'] > 0:
                                     target_x = int(M['m10'] / M['m00'])

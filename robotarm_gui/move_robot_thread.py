@@ -77,7 +77,7 @@ class MoveRobotThread(QThread):
                 time.sleep(1)
                 
                 # Pick
-                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.100], "Picking"):
+                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.112], "Picking"):
                     return
                 time.sleep(1)
 
@@ -92,7 +92,7 @@ class MoveRobotThread(QThread):
                 time.sleep(1)
 
                 # Place
-                self._execute_movement(moveit2, [0.0, 0.0, 0.100], "Placing")
+                self._execute_movement(moveit2, [0.0, 0.0, 0.112], "Placing")
                 time.sleep(1)
                 # Lifting back
                 self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Lifting back")

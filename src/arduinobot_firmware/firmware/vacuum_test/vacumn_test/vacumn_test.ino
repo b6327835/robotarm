@@ -3,21 +3,23 @@ const int depthSensorPin = 14;
 const int vacuumInPin = 32;
 const int vacuumOutPin = 33;
 
-const int DEBOUNCE_DELAY = 50;    // Debounce time in milliseconds
-const int READING_COUNT = 5;       // Number of readings to average
-const int STABLE_THRESHOLD = 20;   // Maximum difference between readings to be considered stable
+const int NUM_READINGS = 10;
+const int SAMPLES_PER_READING = 4;  // Number of samples to take for each reading
+const int ADC_MAX_RESOLUTION = 12;  // 12-bit resolution
+int readings[NUM_READINGS];
+int readIndex = 0;
 
 unsigned long depthSensorActivatedTime = 0;
 unsigned long vacuumActivatedTime = 0;
 bool vacuumInActive = false;
 bool vacuumOutActive = false;
 
-unsigned long lastDebounceTime = 0;
-int lastSensorStableValue = 0;
-int sensorReadings[READING_COUNT];
-int readingIndex = 0;
-
 void setup() {
+    analogReadResolution(ADC_MAX_RESOLUTION);  // Set ADC to 12-bit resolution
+    // Initialize readings array to avoid garbage values
+    for(int i = 0; i < NUM_READINGS; i++) {
+        readings[i] = 0;
+    }
     pinMode(depthSensorPin, INPUT);
     pinMode(vacuumInPin, OUTPUT);
     pinMode(vacuumOutPin, OUTPUT);
@@ -28,18 +30,17 @@ void setup() {
 }
 
 void loop() {
-    delay(50);  // Reduced delay since we're using debouncing
-    int currentReading = getStableSensorReading();
+    delay(50);
+    int currentReading = getAveragedReading();
     unsigned long currentTime = millis();
 
     // Print depth sensor value
-    Serial.print("Stable depth sensor value: ");
+    Serial.print("Averaged depth sensor value: ");
     Serial.println(currentReading);
 
     if (currentReading < 200) {
-        if (depthSensorActivatedTime == 0 && (currentTime - lastDebounceTime) > DEBOUNCE_DELAY) {
+        if (depthSensorActivatedTime == 0) {
             depthSensorActivatedTime = currentTime;
-            lastDebounceTime = currentTime;
         } else if (currentTime - depthSensorActivatedTime >= 5000) {
             activateVacuumIn();
         }
@@ -47,10 +48,7 @@ void loop() {
         Serial.print(currentTime - depthSensorActivatedTime);
         Serial.println(" milliseconds");
     } else {
-        if ((currentTime - lastDebounceTime) > DEBOUNCE_DELAY) {
-            depthSensorActivatedTime = 0;
-            lastDebounceTime = currentTime;
-        }
+        depthSensorActivatedTime = 0;
     }
 
     if (vacuumInActive && currentTime - vacuumActivatedTime >= 1000) {
@@ -75,32 +73,25 @@ void loop() {
     }
 }
 
-int getStableSensorReading() {
-    // Add new reading to array
-    sensorReadings[readingIndex] = analogRead(depthSensorPin);
-    readingIndex = (readingIndex + 1) % READING_COUNT;
-
-    // Calculate average
-    int sum = 0;
-    for (int i = 0; i < READING_COUNT; i++) {
-        sum += sensorReadings[i];
+int getAveragedReading() {
+    // Take multiple samples and average them for each reading
+    long sampleSum = 0;
+    for(int i = 0; i < SAMPLES_PER_READING; i++) {
+        sampleSum += analogRead(depthSensorPin);
+        delayMicroseconds(100);  // Short delay between samples
     }
-    int average = sum / READING_COUNT;
-
-    // Check stability
-    bool isStable = true;
-    for (int i = 0; i < READING_COUNT; i++) {
-        if (abs(sensorReadings[i] - average) > STABLE_THRESHOLD) {
-            isStable = false;
-            break;
-        }
+    int currentReading = sampleSum / SAMPLES_PER_READING;
+    
+    // Add to rolling average
+    readings[readIndex] = currentReading;
+    readIndex = (readIndex + 1) % NUM_READINGS;
+    
+    // Calculate final average
+    long sum = 0;
+    for (int i = 0; i < NUM_READINGS; i++) {
+        sum += readings[i];
     }
-
-    if (isStable) {
-        lastSensorStableValue = average;
-    }
-
-    return lastSensorStableValue;
+    return sum / NUM_READINGS;
 }
 
 void activateVacuumIn() {
