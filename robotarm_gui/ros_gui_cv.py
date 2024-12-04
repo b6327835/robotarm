@@ -27,6 +27,8 @@ import cv2
 import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 from move_robot_thread import MoveRobotThread
+from auto_pnp_thread import AutoPnPThread  # Add this import
+import queue  # Add this import
 
 class myclass(Ui_MainWindow):
     def __init__(self) -> None:
@@ -59,6 +61,17 @@ class myclass(Ui_MainWindow):
         # self.move_timer = QtCore.QTimer()
         # self.move_timer.timeout.connect(self.execute_move)
         self.is_move_running = False
+        self.is_auto_pnp_running = False  # Add this line
+        self.object_detected = False  # Flag to indicate if an object is detected
+        self.grid_rows = 4
+        self.grid_cols = 3
+        self.cell_size = 0.03  # 10mm in meters
+        self.placed_count = 0
+        self.auto_pnp_thread = None
+        self.grid_start_x = 0.0  # Default starting X position for grid
+        self.grid_start_y = 0.0  # Default starting Y position for grid
+        self.object_queue = queue.Queue()  # Queue for detected objects
+        self.first_pnp_completed = False
 
     def gnc(self):
         self.stackedWidget.addWidget(self.manpage)
@@ -101,6 +114,7 @@ class myclass(Ui_MainWindow):
         self.pick_target_bt.clicked.connect(self.picktarget)
         self.pnp_bt.clicked.connect(self.to_pnp)
         self.home_bt.clicked.connect(self.home)
+        self.auto_bt.clicked.connect(self.auto_pnp)
 
         self.thread = VideoThread()
         self.thread.start()
@@ -108,6 +122,7 @@ class myclass(Ui_MainWindow):
         self.thread.target_signal.connect(self.target_xy)
         self.disply_width = self.Display.width()
         self.display_height = self.Display.height()
+        self.thread.grid_start_signal.connect(self.update_grid_start)
         
     def update_image(self, cv_img):
         qt_img = self.convert_cv_qt(cv_img, 640, 480)
@@ -127,6 +142,7 @@ class myclass(Ui_MainWindow):
         self.tar_y = target_y
         self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
         self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+        self.object_queue.put((self.tar_x, self.tar_y))  # Enqueue detected object
         # print(f"P1 coordinates: X={self.tar_x}, Y={self.tar_y}, Z={z}")
     
     def checkbottom(self):
@@ -395,14 +411,21 @@ class myclass(Ui_MainWindow):
             self.zp = "2z" + str(self.z_def)
             
     def is_operation_running(self):
-        return self.is_move_running
+        return self.is_move_running or self.is_auto_pnp_running
 
-    def start_move_thread(self, mode):
+    def start_move_thread(self, mode, dest_x=0.0, dest_y=0.0):
         print(f"move mode: {mode}")
         self.move_mode = mode
-        if not self.is_operation_running():
+        if not self.is_move_running:
             print(f"Starting {mode} with X={self.tar_x * 0.001}, Y={self.tar_y * 0.001}, Z={self.tar_z * 0.001}")
-            self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode)
+            if mode == "pnp":
+                # Compute destination positions on grid
+                row = self.placed_count // self.grid_cols
+                col = self.placed_count % self.grid_cols
+                dest_x = self.grid_start_x + col * self.cell_size
+                dest_y = self.grid_start_y + row * self.cell_size
+                self.placed_count += 1
+            self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode, dest_x=dest_x, dest_y=dest_y)
             self.move_thread.finished.connect(self.on_move_finished)
             self.is_move_running = True
             self.move_thread.start()
@@ -420,10 +443,39 @@ class myclass(Ui_MainWindow):
 
     def home(self):
         self.start_move_thread("home")
+        
+    def auto_pnp(self):
+        if not self.is_auto_pnp_running:
+            self.auto_pnp_thread = AutoPnPThread(
+                self.grid_rows,
+                self.grid_cols,
+                self.cell_size,
+                self,
+                self.grid_start_x,  # Pass starting X position
+                self.grid_start_y   # Pass starting Y position
+            )
+            self.auto_pnp_thread.finished.connect(self.on_auto_pnp_finished)
+            self.is_auto_pnp_running = True
+            self.auto_pnp_thread.start()
+        else:
+            print("Auto pick-and-place operation is already running, please wait.")
+
+    def on_auto_pnp_finished(self):
+        self.is_auto_pnp_running = False
+        print("Auto pick-and-place completed.")
 
     def on_move_finished(self):
         self.is_move_running = False
+        if self.move_mode == "pnp":
+            self.first_pnp_completed = True
+        print("Move finished. is_move_running set to False.")
         print("All operations finished. You can start again.")
+
+    def update_grid_start(self, x, y):
+        if not self.first_pnp_completed:
+            self.grid_start_x = x
+            self.grid_start_y = y
+            print(f"Updated grid start position to X={x:.3f}, Y={y:.3f}")
 
 if __name__ == "__main__":
     myobj = myclass()

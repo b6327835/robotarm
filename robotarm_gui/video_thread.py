@@ -2,34 +2,73 @@ from PyQt5.QtCore import QThread, pyqtSignal
 import cv2
 import numpy as np
 from aruco_markers_detect import ArucoMarkerPosition
+import pyrealsense2 as rs
+from color_detection import ColorDetector    # Add this import
 
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     target_signal = pyqtSignal(float, float)
+    # Add new signal for grid start position
+    grid_start_signal = pyqtSignal(float, float)
 
-    def __init__(self):
+    def __init__(self, use_realsense=True):    # Add camera type parameter
         super().__init__()
-        self.detect_mode = "white"  # Default mode for round white objects
-        self.cap = cv2.VideoCapture(0)
+        self.detect_mode = "black"
+        self.use_realsense = use_realsense
+        self.cap = None
+        self.grid_start_found = False
         
-        if not self.cap.isOpened():
-            print("Error: Could not open webcam.")
-            exit()
+        if self.use_realsense:
+            # Initialize RealSense pipeline
+            self.pipeline = rs.pipeline()
+            config = rs.config()
+            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+            config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+            self.pipeline.start(config)
+            # Initialize align object to align depth frames to color frames
+            self.align = rs.align(rs.stream.color)
+        else:
+            # Original webcam initialization code
+            for index in range(2):
+                print(f"Attempting to open camera index {index}")
+                self.cap = cv2.VideoCapture(index)
+                if self.cap.isOpened():
+                    print(f"Successfully opened camera at index {index}")
+                    break
+            
+            if not self.cap or not self.cap.isOpened():
+                raise RuntimeError("Error: Could not open any webcam. Please check connections.")
 
-        # Set camera properties for Logitech C922 Pro HD
-        self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
-        self.cap.set(cv2.CAP_PROP_FOCUS, 0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            # Set camera properties for Logitech C922 Pro HD
+            self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+            self.cap.set(cv2.CAP_PROP_FOCUS, 0)
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
         # Initialize detector with existing camera
         self.aruco_detector = ArucoMarkerPosition(display_output=False, existing_cap=self.cap)
 
     def run(self):
         while True:
-            ret, cv_img = self.cap.read()
+            if self.use_realsense:
+                # Get frameset of color and depth
+                frames = self.pipeline.wait_for_frames()
+                # Align frames
+                aligned_frames = self.align.process(frames)
+                color_frame = aligned_frames.get_color_frame()
+                depth_frame = aligned_frames.get_depth_frame()
+                if not color_frame or not depth_frame:
+                    continue
+                # Convert images to numpy arrays
+                cv_img = np.asanyarray(color_frame.get_data())
+                depth_image = np.asanyarray(depth_frame.get_data())
+                ret = True
+            else:
+                ret, cv_img = self.cap.read()
+                depth_image = None
+
             if not ret:
-                print("Error: Failed to grab cv_img.")
+                print("Error: Failed to grab frame.")
                 break
 
             cv_img = cv2.resize(cv_img, (640, 480))
@@ -104,38 +143,39 @@ class VideoThread(QThread):
                 box_width = max(x_coords) - x_fixed
                 box_height = max(y_coords) - y_fixed
 
-                # Color object detection based on mode
+                # Check for marker ID 4 inside the box boundaries
+                if ids is not None:
+                    for i in range(len(ids)):
+                        marker_id = ids[i][0]
+                        if marker_id == 4:
+                            marker_corners = corners[i][0]
+                            center_x = np.mean(marker_corners[:, 0])
+                            center_y = np.mean(marker_corners[:, 1])
+                            
+                            # Check if marker 4 is inside the box
+                            if (x_fixed <= center_x <= x_fixed + box_width and 
+                                y_fixed <= center_y <= y_fixed + box_height):
+                                # Convert to ROS coordinates like target objects
+                                y_relative = (center_y - y_fixed) / box_height
+                                x_relative = (center_x - x_fixed) / box_width
+                                grid_x = (135 - (y_relative * 135)) - 4
+                                grid_y = (145 - (x_relative * 140)) - 0
+                                
+                                if not self.grid_start_found:
+                                    self.grid_start_signal.emit(grid_x * 0.001, grid_y * 0.001)
+                                    cv2.circle(cv_img, (int(center_x), int(center_y)), 5, (255, 255, 0), -1)
+                                    cv2.putText(cv_img, "Grid Start", (int(center_x) + 10, int(center_y) + 10),
+                                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+                # Color object detection using new ColorDetector
                 blurred = cv2.GaussianBlur(cv_img, (5, 5), 0)
                 hsv_img = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
-
-                if self.detect_mode == "white":
-                    # Define white color range with updated thresholds
-                    lower_color = np.array([0, 0, 185])
-                    upper_color = np.array([95, 255, 255])
-                elif self.detect_mode == "red":
-                    # Define red color range (red wraps around in HSV)
-                    lower_color1 = np.array([0, 120, 70])
-                    upper_color1 = np.array([10, 255, 255])
-                    lower_color2 = np.array([170, 120, 70])
-                    upper_color2 = np.array([180, 255, 255])
-                    
-                    # Create mask for red color (combining both ranges)
-                    mask1 = cv2.inRange(hsv_img, lower_color1, upper_color1)
-                    mask2 = cv2.inRange(hsv_img, lower_color2, upper_color2)
-                    color_mask = cv2.bitwise_or(mask1, mask2)
-                else:
-                    color_mask = np.zeros_like(hsv_img[:,:,0])
-
-                # Create mask for selected color
-                if self.detect_mode == "white":
-                    color_mask = cv2.inRange(hsv_img, lower_color, upper_color)
                 
-                # Add morphological operations with updated kernel size
-                kernel = np.ones((8,8), np.uint8)
-                color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel)
-                color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
+                # Get and process color mask
+                color_mask = ColorDetector.get_color_mask(hsv_img, self.detect_mode)
+                color_mask = ColorDetector.process_mask(color_mask)
                 
-                # Find contours in the mask
+                # Rest of the existing detection code
                 contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 detected_objects = []
 
@@ -164,25 +204,40 @@ class VideoThread(QThread):
                     highest_priority = detected_objects[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
                     
+                    # Add depth measurement for RealSense
+                    if self.use_realsense and depth_frame:
+                        depth_value = depth_frame.get_distance(target_x, target_y)
+                        # Convert depth to mm
+                        depth_mm = int(depth_value * 1000)
+                    else:
+                        depth_mm = None
+
                     y_relative = (target_y - y_fixed) / box_height
                     x_relative = (target_x - x_fixed) / box_width
 
-                    tar_x = (135 - (y_relative * 135))-(4)# Maps from 135 to 0
-                    tar_y = (145 - (x_relative * 140))-(0) # Maps from 145 to 5
+                    tar_x = (135 - (y_relative * 135))-(4)
+                    tar_y = (145 - (x_relative * 140))-(0)
                     if tar_x < 0:
                         tar_x = 0
                     self.target_signal.emit(tar_x, tar_y)
 
-                # Draw detected objects with converted coordinates
+                # Draw detected objects with converted coordinates and depth
                 for priority, (shape_type, target_x, target_y) in enumerate(detected_objects, start=1):
                     cv2.circle(cv_img, (target_x, target_y), 5, (0, 0, 255), -1)
-                    # Calculate converted coordinates for each object
                     y_rel = (target_y - y_fixed) / box_height
                     x_rel = (target_x - x_fixed) / box_width
                     conv_x = 135 - (y_rel * 135)
                     conv_y = 145 - (x_rel * 140)
                     
-                    # Draw first line (pixel coordinates)
+                    # Get depth for this object if using RealSense
+                    if self.use_realsense and depth_frame:
+                        depth_value = depth_frame.get_distance(target_x, target_y)
+                        depth_mm = int(depth_value * 1000)
+                        depth_text = f"D:{depth_mm}mm"
+                    else:
+                        depth_text = ""
+
+                    # Draw coordinates and depth
                     cv2.putText(
                         cv_img,
                         f"P{priority}:X{target_x},Y{target_y}",
@@ -192,10 +247,9 @@ class VideoThread(QThread):
                         (0, 255, 0),
                         1,
                     )
-                    # Draw second line (ROS coordinates)
                     cv2.putText(
                         cv_img,
-                        f"Ros:X{conv_x:.2f},Y{conv_y:.2f}",
+                        f"Ros:X{conv_x:.2f},Y{conv_y:.2f} {depth_text}",
                         (target_x - 10, target_y),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.4,
@@ -212,4 +266,7 @@ class VideoThread(QThread):
         cv2.destroyAllWindows()
 
     def __del__(self):
-        self.cap.release()
+        if self.use_realsense:
+            self.pipeline.stop()
+        else:
+            self.cap.release()

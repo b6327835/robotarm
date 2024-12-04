@@ -10,12 +10,14 @@ import time
 class MoveRobotThread(QThread):
     movement_status = pyqtSignal(str)  # Signal to update UI with movement status
 
-    def __init__(self, x, y, z, mode, parent=None):
+    def __init__(self, x, y, z, mode, parent=None, dest_x=0.0, dest_y=0.0):
         super().__init__(parent)
         # Assign positions directly without validation
         self.x = round(x, 3)
         self.y = round(y, 3)
         self.z = round(z, 3)
+        self.dest_x = round(dest_x, 3)
+        self.dest_y = round(dest_y, 3)
         self.mode = mode
 
     def _execute_movement(self, moveit2, positions, description="Moving", max_attempts=10):
@@ -72,30 +74,33 @@ class MoveRobotThread(QThread):
                 pnp_x = self.x
                 pnp_y = self.y
                 # Approach position from above
-                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.0], "Approaching position", max_attempts=1):
+                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.0], "Approaching position"):
                     return
                 time.sleep(1)
-                
                 # Pick
                 if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.112], "Picking"):
                     return
                 time.sleep(1)
-
                 # Lift
                 if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.0], "Lifting"):
                     return
                 time.sleep(1)
-
-                # Return to home position with item
-                if not self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home"):
+                # Move to placement position
+                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Moving to placement"):
                     return
                 time.sleep(1)
-
                 # Place
-                self._execute_movement(moveit2, [0.0, 0.0, 0.112], "Placing")
+                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.112], "Placing object"):
+                    return
                 time.sleep(1)
-                # Lifting back
-                self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Lifting back")
+                # Lift after placing
+                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
+                    return
+                time.sleep(1)
+                # Return to home position
+                if not self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home"):
+                    return
+                print("Completed pnp movement.")
 
             def pick():
                 if not self._execute_movement(moveit2, [self.x, self.y, 0.0], "Approaching pick position"):
@@ -106,22 +111,59 @@ class MoveRobotThread(QThread):
             def home():
                 self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home")
 
+            def auto_pnp():
+                # Use self.x and self.y for the object's position
+                # Use self.x and self.y for the object's position
+                pick_x = self.x
+                pick_y = self.y
+                # Pick
+                if not self._execute_movement(moveit2, [self.x, self.y, 0.0], "Approaching object"):
+                    return
+                time.sleep(1)
+                if not self._execute_movement(moveit2, [self.x, self.y, 0.112], "Picking object"):
+                    return
+                time.sleep(1)
+                # Lift
+                if not self._execute_movement(moveit2, [self.x, self.y, 0.0], "Lifting object"):
+                    return
+                time.sleep(1)
+                # Move to placement position
+                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Moving to placement"):
+                    return
+                time.sleep(1)
+                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.112], "Placing object"):
+                    return
+                time.sleep(1)
+                # Lift after placing
+                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
+                    return
+                time.sleep(1)
+                # Return to home position
+                if not self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home"):
+                    return
+                print("Completed auto_pnp movement.")
+
             # Execute requested movement mode
             movement_functions = {
                 "move": move,
                 "pnp": pnp,
                 "pick": pick,
-                "home": home
+                "home": home,
+                "auto_pnp": auto_pnp
             }
             
+            print(f"Starting movement in mode: {self.mode}")
             if self.mode in movement_functions:
                 movement_functions[self.mode]()
             else:
                 self.movement_status.emit(f"Invalid movement mode: {self.mode}")
-
+            print("Movement function completed.")
         except Exception as e:
             self.movement_status.emit(f"Error: {str(e)}")
+            print(f"Exception in MoveRobotThread: {e}")
         finally:
             rclpy.shutdown()
             if 'executor_thread' in locals():
                 executor_thread.join()
+            print("MoveRobotThread completed.")
+

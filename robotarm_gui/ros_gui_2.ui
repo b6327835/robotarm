@@ -682,7 +682,7 @@
        <string>Pick Target</string>
       </property>
      </widget>
-     <widget class="QDoubleSpinBox" name="y_offset_spin">
+     <widget class="QDoubleSpinBox" name="x_offset_spin">
       <property name="geometry">
        <rect>
         <x>770</x>
@@ -701,7 +701,7 @@
        <double>0.010000000000000</double>
       </property>
      </widget>
-     <widget class="QDoubleSpinBox" name="y_offset_spin_2">
+     <widget class="QDoubleSpinBox" name="y_offset_spin">
       <property name="geometry">
        <rect>
         <x>770</x>
@@ -726,6 +726,19 @@
        <double>0.000000000000000</double>
       </property>
      </widget>
+     <widget class="QPushButton" name="auto_bt">
+      <property name="geometry">
+       <rect>
+        <x>670</x>
+        <y>500</y>
+        <width>151</width>
+        <height>25</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Automatic(test)</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QWidget" name="jogpage">
      <widget class="QPushButton" name="jogxu">
@@ -745,7 +758,7 @@
       </property>
       <property name="icon">
        <iconset theme="Arrow">
-        <normaloff>.</normaloff>.</iconset>
+        <normaloff>../GUIVision</normaloff>../GUIVision</iconset>
       </property>
      </widget>
      <widget class="QPushButton" name="jogyd">
