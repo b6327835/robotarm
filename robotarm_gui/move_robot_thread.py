@@ -1,10 +1,5 @@
 from PyQt5.QtCore import QThread, pyqtSignal
-import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.node import Node
-from pymoveit2 import MoveIt2
-from pymoveit2.robots import cartesian as panda # type: ignore
-from threading import Thread
+import serial
 import time
 
 class MoveRobotThread(QThread):
@@ -19,127 +14,135 @@ class MoveRobotThread(QThread):
         self.dest_x = round(dest_x, 3)
         self.dest_y = round(dest_y, 3)
         self.mode = mode
+        self.serial_port = None
+        self._connect_serial()
 
-    def _execute_movement(self, moveit2, positions, description="Moving", max_attempts=10):
-        """Execute movement with error handling, configurable retries."""
-        for attempt in range(max_attempts):
+    def _connect_serial(self):
+        """Try to connect to various common serial ports"""
+        possible_ports = [
+            '/dev/ttyUSB0',
+            '/dev/ttyACM0',
+            'COM1', 'COM2', 'COM3', 'COM4', 'COM5'
+        ]
+        
+        for port in possible_ports:
             try:
-                self.movement_status.emit(f"{description}: {positions} (Attempt {attempt + 1})")
-                moveit2.move_to_configuration(positions)
-                success = moveit2.wait_until_executed()
-                if not success:
-                    self.movement_status.emit(f"Movement failed on attempt {attempt + 1}")
-                    time.sleep(0.1)  # Wait before retrying
-                    continue
+                self.serial_port = serial.Serial(port, 9600, timeout=1)
+                self.movement_status.emit(f"Connected to {port}")
                 return True
+            except serial.SerialException:
+                continue
+        
+        self.movement_status.emit("Failed to connect to any serial port")
+        raise Exception("Could not connect to any available serial port")
+
+    def _wait_for_completion(self, timeout=10):
+        """Wait for 'Movement complete' response from ESP32"""
+        start_time = time.time()
+        while (time.time() - start_time) < timeout:
+            try:
+                response = self.serial_port.readline().decode().strip()
+                if response == "Movement complete":
+                    return True
+                elif response:  # Log any other responses
+                    self.movement_status.emit(f"Got response: {response}")
             except Exception as e:
-                self.movement_status.emit(f"Error during movement on attempt {attempt + 1}: {str(e)}")
-                time.sleep(1)  # Wait before retrying
+                self.movement_status.emit(f"Error reading response: {str(e)}")
+                return False
+        return False
+
+    def _send_command(self, command):
+        """Send command to the robot arm via serial."""
+        try:
+            if not self.serial_port or not self.serial_port.is_open:
+                self._connect_serial()
+            
+            # Format command for your specific robot protocol
+            formatted_command = f"{command}\n"
+            self.serial_port.write(formatted_command.encode())
+            
+            # Wait for acknowledgment
+            response = self.serial_port.readline().decode().strip()
+            self.movement_status.emit(f"Response: {response}")
+            
+            return response == "OK"
+        except Exception as e:
+            self.movement_status.emit(f"Error sending command: {str(e)}")
+            return False
+
+    def _execute_movement(self, positions, description="Moving", max_attempts=10):
+        """Execute movement with error handling, configurable retries."""
+        command = f"MOVE {positions[0]} {positions[1]} {positions[2]}"
+        for attempt in range(max_attempts):
+            self.movement_status.emit(f"{description}: {positions} (Attempt {attempt + 1})")
+            if self._send_command(command):
+                return True
+            self.movement_status.emit(f"Movement failed on attempt {attempt + 1}")
+            time.sleep(0.1)  # Wait before retrying
         self.movement_status.emit(f"Failed to execute movement after {max_attempts} attempts.")
         return False
 
     def run(self):
         try:
-            rclpy.init()
-            node = Node("python_move_goal")
-            
-            # Create callback group for MoveIt2
-            callback_group = ReentrantCallbackGroup()
-            moveit2 = MoveIt2(
-                node=node,
-                joint_names=panda.joint_names(),
-                base_link_name=panda.base_link_name(),
-                end_effector_name=panda.end_effector_name(),
-                group_name=panda.MOVE_GROUP_ARM,
-                callback_group=callback_group,
-            )
-
-            # Configure movement parameters
-            moveit2.max_velocity = 0.15
-            moveit2.max_acceleration = 0.15
-            moveit2.planning_time = 2.0
-            moveit2.num_planning_attempts = 3
-
-            # Spin the node and allow for execution of the motion
-            executor = rclpy.executors.MultiThreadedExecutor(2)
-            executor.add_node(node)
-            executor_thread = Thread(target=executor.spin, daemon=True, args=())
-            executor_thread.start()
-            node.create_rate(1.0).sleep()
-            
             def move():
-                return self._execute_movement(moveit2, [self.x, self.y, 0.0], "Moving to position")
+                return self._execute_movement([self.x, self.y, 0.0], "Moving to position")
 
             def pnp():
                 pnp_x = self.x
                 pnp_y = self.y
                 # Approach position from above
-                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.0], "Approaching position"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], "Approaching position"):
                     return
-                time.sleep(1)
                 # Pick
-                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.112], "Picking"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.112], "Picking"):
                     return
-                time.sleep(1)
                 # Lift
-                if not self._execute_movement(moveit2, [pnp_x, pnp_y, 0.0], "Lifting"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], "Lifting"):
                     return
-                time.sleep(1)
                 # Move to placement position
-                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Moving to placement"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Moving to placement"):
                     return
-                time.sleep(1)
                 # Place
-                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.112], "Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], "Placing object"):
                     return
-                time.sleep(1)
                 # Lift after placing
-                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
                     return
-                time.sleep(1)
                 # Return to home position
-                if not self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home"):
+                if not self._execute_movement([0.0, 0.0, 0.0], "Returning home"):
                     return
                 print("Completed pnp movement.")
 
             def pick():
-                if not self._execute_movement(moveit2, [self.x, self.y, 0.0], "Approaching pick position"):
+                if not self._execute_movement([self.x, self.y, 0.0], "Approaching pick position"):
                     return
-                time.sleep(1)
-                self._execute_movement(moveit2, [self.x, self.y, 0.0], "Picking")
+                self._execute_movement([self.x, self.y, 0.0], "Picking")
 
             def home():
-                self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home")
+                self._execute_movement([0.0, 0.0, 0.0], "Returning home")
 
             def auto_pnp():
-                # Use self.x and self.y for the object's position
                 # Use self.x and self.y for the object's position
                 pick_x = self.x
                 pick_y = self.y
                 # Pick
-                if not self._execute_movement(moveit2, [self.x, self.y, 0.0], "Approaching object"):
+                if not self._execute_movement([self.x, self.y, 0.0], "Approaching object"):
                     return
-                time.sleep(1)
-                if not self._execute_movement(moveit2, [self.x, self.y, 0.112], "Picking object"):
+                if not self._execute_movement([self.x, self.y, 0.112], "Picking object"):
                     return
-                time.sleep(1)
                 # Lift
-                if not self._execute_movement(moveit2, [self.x, self.y, 0.0], "Lifting object"):
+                if not self._execute_movement([self.x, self.y, 0.0], "Lifting object"):
                     return
-                time.sleep(1)
                 # Move to placement position
-                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Moving to placement"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Moving to placement"):
                     return
-                time.sleep(1)
-                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.112], "Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], "Placing object"):
                     return
-                time.sleep(1)
                 # Lift after placing
-                if not self._execute_movement(moveit2, [self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
                     return
-                time.sleep(1)
                 # Return to home position
-                if not self._execute_movement(moveit2, [0.0, 0.0, 0.0], "Returning home"):
+                if not self._execute_movement([0.0, 0.0, 0.0], "Returning home"):
                     return
                 print("Completed auto_pnp movement.")
 
@@ -162,8 +165,6 @@ class MoveRobotThread(QThread):
             self.movement_status.emit(f"Error: {str(e)}")
             print(f"Exception in MoveRobotThread: {e}")
         finally:
-            rclpy.shutdown()
-            if 'executor_thread' in locals():
-                executor_thread.join()
+            self.serial_port.close()
             print("MoveRobotThread completed.")
 

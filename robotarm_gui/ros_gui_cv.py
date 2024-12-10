@@ -15,20 +15,9 @@ import numpy as np
 from ultralytics import YOLO
 from threading import Thread
 from move_robot_thread import MoveRobotThread
-from video_thread import VideoThread  # Add this import
-import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
-from rclpy.node import Node
-
-from pymoveit2 import MoveIt2, MoveIt2State
-from pymoveit2.robots import cartesian as panda # type: ignore
-
-import cv2
-import numpy as np
-from PyQt5.QtCore import QThread, pyqtSignal
-from move_robot_thread import MoveRobotThread
-from auto_pnp_thread import AutoPnPThread  # Add this import
-import queue  # Add this import
+from video_thread import VideoThread
+import queue
+from auto_pnp_thread import AutoPnPThread
 
 class myclass(Ui_MainWindow):
     def __init__(self) -> None:
@@ -49,28 +38,29 @@ class myclass(Ui_MainWindow):
         self.tar_y = 0.0
         self.tar_z = 0.0
 
-        # self.ser = Serial('COM12',115200)
-        # self.ser.setDTR(1)
-        # self.ser.setRTS(0)
+        try:
+            self.ser = Serial('COM3', 9600, timeout=1)  # Adjust port and baud rate as needed
+            print("Serial connection established")
+        except Exception as e:
+            print(f"Failed to connect to serial port: {e}")
+            self.ser = None
 
         self.tm1tick = QtCore.QTimer()
         self.tm1tick.timeout.connect(self.checkbottom)
         self.tm1tick.setInterval(100)
         self.tm1tick.start()
         
-        # self.move_timer = QtCore.QTimer()
-        # self.move_timer.timeout.connect(self.execute_move)
         self.is_move_running = False
-        self.is_auto_pnp_running = False  # Add this line
-        self.object_detected = False  # Flag to indicate if an object is detected
+        self.is_auto_pnp_running = False
+        self.object_detected = False
         self.grid_rows = 4
         self.grid_cols = 3
-        self.cell_size = 0.03  # 10mm in meters
+        self.cell_size = 0.03
         self.placed_count = 0
         self.auto_pnp_thread = None
-        self.grid_start_x = 0.0  # Default starting X position for grid
-        self.grid_start_y = 0.0  # Default starting Y position for grid
-        self.object_queue = queue.Queue()  # Queue for detected objects
+        self.grid_start_x = 0.0
+        self.grid_start_y = 0.0
+        self.object_queue = queue.Queue()
         self.first_pnp_completed = False
 
     def gnc(self):
@@ -91,7 +81,6 @@ class myclass(Ui_MainWindow):
         self.Initial_bottom.clicked.connect(self.INITIAL_SET)
         self.home_bottom.clicked.connect(self.HOME_SET)
         self.start_bottom.clicked.connect(self.START_SET)
-        # self.Gopoint.clicked.connect(self.to_pnp)
 
         self.horizontalSlider_1.sliderReleased.connect(self.X_SET)
         self.horizontalSlider_2.sliderReleased.connect(self.Y_SET)
@@ -142,8 +131,7 @@ class myclass(Ui_MainWindow):
         self.tar_y = target_y
         self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
         self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
-        self.object_queue.put((self.tar_x, self.tar_y))  # Enqueue detected object
-        # print(f"P1 coordinates: X={self.tar_x}, Y={self.tar_y}, Z={z}")
+        self.object_queue.put((self.tar_x, self.tar_y))
     
     def checkbottom(self):
         if self.x_post == 0:
@@ -210,7 +198,6 @@ class myclass(Ui_MainWindow):
 
     def Setting(self):
         self.takeVal()
-        # print(type(self.GetVal))
 
         if isinstance(self.GetVal, int):
             self.selectbot.setDisabled(1)
@@ -289,10 +276,8 @@ class myclass(Ui_MainWindow):
         self.Y_core_j.setText(str(0))
         self.Z_core_j.setText(str(0))
         print(" ")
-        # print(f'X:{x_post} ,Y:{y_post} ,Z:{z_post}')
         print(f"X,Y,Z: {self.x_post},{self.y_post},{self.z_post}")
         print("INITIAL Check")
-        # self.xpoint()
 
     def HOME_SET(self):
         self.horizontalSlider_1.setValue(150)
@@ -312,25 +297,20 @@ class myclass(Ui_MainWindow):
         self.Z_core_j.setText(str(150))
 
         print(" ")
-        # print(f'X:{x_post} ,Y:{y_post} ,Z:{z_post}')
         print(f"X,Y,Z: {self.x_post},{self.y_post},{self.z_post}")
         print("HOME Check")
-        # self.xpoint()
 
     def START_SET(self):
         self.x_post = self.horizontalSlider_1.value()
         self.y_post = self.horizontalSlider_2.value()
         self.z_post = self.horizontalSlider_3.value()
-        # print(f'X:{x_post} ,Y:{y_post} ,Z:{z_post}')
         print(" ")
         if self.x_post == 0 & self.y_post == 0 & self.z_post == 0:
-            # self.ser.write(f'u'.encode())
             self.xp = "3x" + str(0)
             self.yp = "3y" + str(0)
             self.zp = "3z" + str(0)
             self.setINITIAL = self.xp + "," + self.yp + "," + self.zp
             sleep(0.2)
-            # self.ser.write(f'{self.setINITIAL}'.encode())
             print(self.setINITIAL)
             print("Set Initial")
         else:
@@ -339,13 +319,9 @@ class myclass(Ui_MainWindow):
             self.zpoint()
             self.setpost = self.xp + "," + self.yp + "," + self.zp
             sleep(0.2)
-            # self.ser.write(f'{self.setpost}'.encode())
             print(self.setpost)
 
             print("Set Positions")
-
-        # print(f'X,Y,Z: {self.x_post},{self.y_post},{self.z_post}')
-        # print("START Check")
 
     def X_SET(self):
         self.x_vale = self.horizontalSlider_1.value()
@@ -363,9 +339,6 @@ class myclass(Ui_MainWindow):
         print(f"Z : {self.z_vale}")
 
     def xpoint(self):
-        # if(self.x_post==self.x_def):
-        #     print(0)
-
         if self.x_post >= self.x_def:
             self.x_def = self.x_post - self.x_def
             print(f"X : +{self.x_def}")
@@ -379,9 +352,6 @@ class myclass(Ui_MainWindow):
             self.xp = "2x" + str(self.x_def)
 
     def ypoint(self):
-        # if(self.y_post==self.y_def):
-        #     print(0)
-
         if self.y_post >= self.y_def:
             self.y_def = self.y_post - self.y_def
             print(f"Y : +{self.y_def}")
@@ -395,9 +365,6 @@ class myclass(Ui_MainWindow):
             self.yp = "2y" + str(self.y_def)
 
     def zpoint(self):
-        # if(self.z_post==self.z_def):
-        #     print(0)
-
         if self.z_post >= self.z_def:
             self.z_def = self.z_post - self.z_def
             print(f"Z : +{self.z_def}")
@@ -419,7 +386,6 @@ class myclass(Ui_MainWindow):
         if not self.is_move_running:
             print(f"Starting {mode} with X={self.tar_x * 0.001}, Y={self.tar_y * 0.001}, Z={self.tar_z * 0.001}")
             if mode == "pnp":
-                # Compute destination positions on grid
                 row = self.placed_count // self.grid_cols
                 col = self.placed_count % self.grid_cols
                 dest_x = self.grid_start_x + col * self.cell_size
@@ -433,16 +399,28 @@ class myclass(Ui_MainWindow):
             print("An operation is already running, please wait for it to finish.")
 
     def to_pnp(self):
-        self.start_move_thread("pnp")
+        if self.ser:
+            self.start_move_thread("pnp")
+        else:
+            print("No serial connection available")
 
     def move_to(self):
-        self.start_move_thread("move")
+        if self.ser:
+            self.start_move_thread("move")
+        else:
+            print("No serial connection available")
 
     def picktarget(self):
-        self.start_move_thread("pick")
+        if self.ser:
+            self.start_move_thread("pick")
+        else:
+            print("No serial connection available")
 
     def home(self):
-        self.start_move_thread("home")
+        if self.ser:
+            self.start_move_thread("home")
+        else:
+            print("No serial connection available")
         
     def auto_pnp(self):
         if not self.is_auto_pnp_running:
@@ -451,8 +429,8 @@ class myclass(Ui_MainWindow):
                 self.grid_cols,
                 self.cell_size,
                 self,
-                self.grid_start_x,  # Pass starting X position
-                self.grid_start_y   # Pass starting Y position
+                self.grid_start_x,
+                self.grid_start_y
             )
             self.auto_pnp_thread.finished.connect(self.on_auto_pnp_finished)
             self.is_auto_pnp_running = True

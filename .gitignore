@@ -5,3 +5,4 @@ log/
 *.pt
 GUIVision/__pycache__/
 myenv/
+venv/
