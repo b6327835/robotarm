@@ -22,12 +22,12 @@ class MoveRobotThread(QThread):
         possible_ports = [
             '/dev/ttyUSB0',
             '/dev/ttyACM0',
-            'COM1', 'COM2', 'COM3', 'COM4', 'COM5'
+            'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9' , 'COM10', 'COM11', 'COM12',
         ]
         
         for port in possible_ports:
             try:
-                self.serial_port = serial.Serial(port, 9600, timeout=1)
+                self.serial_port = serial.Serial(port, 115200, timeout=1)
                 self.movement_status.emit(f"Connected to {port}")
                 return True
             except serial.SerialException:
@@ -70,13 +70,16 @@ class MoveRobotThread(QThread):
             self.movement_status.emit(f"Error sending command: {str(e)}")
             return False
 
-    def _execute_movement(self, positions, description="Moving", max_attempts=10):
+    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=2):
         """Execute movement with error handling, configurable retries."""
-        command = f"MOVE {positions[0]} {positions[1]} {positions[2]}"
+        command = f"x{positions[0]},y{positions[1]},z{positions[2]},v{vacuum}"
         for attempt in range(max_attempts):
             self.movement_status.emit(f"{description}: {positions} (Attempt {attempt + 1})")
             if self._send_command(command):
-                return True
+                # Add wait for completion after successful command send
+                if self._wait_for_completion():
+                    return True
+                self.movement_status.emit("Movement timeout")
             self.movement_status.emit(f"Movement failed on attempt {attempt + 1}")
             time.sleep(0.1)  # Wait before retrying
         self.movement_status.emit(f"Failed to execute movement after {max_attempts} attempts.")
@@ -85,64 +88,67 @@ class MoveRobotThread(QThread):
     def run(self):
         try:
             def move():
-                return self._execute_movement([self.x, self.y, 0.0], "Moving to position")
-
+                return self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Moving to position")
             def pnp():
                 pnp_x = self.x
                 pnp_y = self.y
                 # Approach position from above
-                if not self._execute_movement([pnp_x, pnp_y, 0.0], "Approaching position"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Approaching position"):
                     return
-                # Pick
-                if not self._execute_movement([pnp_x, pnp_y, 0.112], "Picking"):
+                # Pick with vacuum on
+                if not self._execute_movement([pnp_x, pnp_y, 0.112], vacuum=0, description="move z"):
                     return
-                # Lift
-                if not self._execute_movement([pnp_x, pnp_y, 0.0], "Lifting"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.112], vacuum=1, description="Picking"):
+                    return
+                # Lift with item
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=1, description="Lifting"):
                     return
                 # Move to placement position
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Moving to placement"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
-                # Place
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], "Placing object"):
+                # Place with vacuum release
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], vacuum=1, description="move z"):
+                    return
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], vacuum=2, description="Placing object"):
                     return
                 # Lift after placing
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
                     return
                 # Return to home position
-                if not self._execute_movement([0.0, 0.0, 0.0], "Returning home"):
+                if not self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home"):
                     return
                 print("Completed pnp movement.")
 
             def pick():
-                if not self._execute_movement([self.x, self.y, 0.0], "Approaching pick position"):
+                if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching pick position"):
                     return
-                self._execute_movement([self.x, self.y, 0.0], "Picking")
+                self._execute_movement([self.x, self.y, 0.112], vacuum=1, description="Picking")
 
             def home():
-                self._execute_movement([0.0, 0.0, 0.0], "Returning home")
+                self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home")
 
             def auto_pnp():
                 # Use self.x and self.y for the object's position
                 pick_x = self.x
                 pick_y = self.y
                 # Pick
-                if not self._execute_movement([self.x, self.y, 0.0], "Approaching object"):
+                if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching object"):
                     return
-                if not self._execute_movement([self.x, self.y, 0.112], "Picking object"):
+                if not self._execute_movement([self.x, self.y, 0.112], vacuum=1, description="Picking object"):
                     return
                 # Lift
-                if not self._execute_movement([self.x, self.y, 0.0], "Lifting object"):
+                if not self._execute_movement([self.x, self.y, 0.0], vacuum=1, description="Lifting object"):
                     return
                 # Move to placement position
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Moving to placement"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], "Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], vacuum=2, description="Placing object"):
                     return
                 # Lift after placing
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], "Lifting after placing"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
                     return
                 # Return to home position
-                if not self._execute_movement([0.0, 0.0, 0.0], "Returning home"):
+                if not self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home"):
                     return
                 print("Completed auto_pnp movement.")
 
@@ -167,4 +173,3 @@ class MoveRobotThread(QThread):
         finally:
             self.serial_port.close()
             print("MoveRobotThread completed.")
-

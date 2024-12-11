@@ -378,7 +378,7 @@ void loop() {
       Serial.println("Performing initial homing...");
       homeAxis();
       Serial.println("Ready for commands");
-      Serial.println("x0.0,y0.0,z0.0");
+      Serial.println("x0.0,y0.0,z0.0,v0");
       return;
     }
     
