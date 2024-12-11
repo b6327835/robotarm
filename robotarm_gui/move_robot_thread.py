@@ -20,8 +20,8 @@ class MoveRobotThread(QThread):
     def _connect_serial(self):
         """Try to connect to various common serial ports"""
         possible_ports = [
-            '/dev/ttyUSB0',
-            '/dev/ttyACM0',
+            '/dev/ttyUSB0', '/dev/ttyUSB1',
+            '/dev/ttyACM0', '/dev/ttyACM1',
             'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9' , 'COM10', 'COM11', 'COM12',
         ]
         
