@@ -38,12 +38,7 @@ class myclass(Ui_MainWindow):
         self.tar_y = 0.0
         self.tar_z = 0.0
 
-        try:
-            self.ser = Serial('COM3', 9600, timeout=1)  # Adjust port and baud rate as needed
-            print("Serial connection established")
-        except Exception as e:
-            print(f"Failed to connect to serial port: {e}")
-            self.ser = None
+        # Remove serial port initialization
 
         self.tm1tick = QtCore.QTimer()
         self.tm1tick.timeout.connect(self.checkbottom)
@@ -392,35 +387,29 @@ class myclass(Ui_MainWindow):
                 dest_y = self.grid_start_y + row * self.cell_size
                 self.placed_count += 1
             self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode, dest_x=dest_x, dest_y=dest_y)
+            self.move_thread.movement_status.connect(self.handle_movement_status)
             self.move_thread.finished.connect(self.on_move_finished)
             self.is_move_running = True
             self.move_thread.start()
         else:
             print("An operation is already running, please wait for it to finish.")
 
+    def handle_movement_status(self, status):
+        print(f"Robot Status: {status}")
+        # You could also update a status label in the GUI here if desired
+        # self.status_label.setText(status)
+
     def to_pnp(self):
-        if self.ser:
-            self.start_move_thread("pnp")
-        else:
-            print("No serial connection available")
+        self.start_move_thread("pnp")
 
     def move_to(self):
-        if self.ser:
-            self.start_move_thread("move")
-        else:
-            print("No serial connection available")
+        self.start_move_thread("move")
 
     def picktarget(self):
-        if self.ser:
-            self.start_move_thread("pick")
-        else:
-            print("No serial connection available")
+        self.start_move_thread("pick")
 
     def home(self):
-        if self.ser:
-            self.start_move_thread("home")
-        else:
-            print("No serial connection available")
+        self.start_move_thread("home")
         
     def auto_pnp(self):
         if not self.is_auto_pnp_running:

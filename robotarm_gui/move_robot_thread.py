@@ -22,15 +22,39 @@ class MoveRobotThread(QThread):
         possible_ports = [
             '/dev/ttyUSB0', '/dev/ttyUSB1',
             '/dev/ttyACM0', '/dev/ttyACM1',
-            'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9' , 'COM10', 'COM11', 'COM12',
+            'COM1', 'COM2', 'COM3', 'COM4', 'COM5'
         ]
         
         for port in possible_ports:
+            self.movement_status.emit(f"Trying port {port}...")
             try:
-                self.serial_port = serial.Serial(port, 115200, timeout=1)
-                self.movement_status.emit(f"Connected to {port}")
-                return True
-            except serial.SerialException:
+                self.serial_port = serial.Serial(
+                    port=port,
+                    baudrate=115200,
+                    timeout=2,
+                    write_timeout=2
+                )
+                # Clear any pending data
+                self.serial_port.reset_input_buffer()
+                self.serial_port.reset_output_buffer()
+                
+                # Test communication
+                self.serial_port.write(b"test\n")
+                time.sleep(0.5)  # Give device time to respond
+                
+                if self.serial_port.in_waiting:
+                    response = self.serial_port.readline().decode().strip()
+                    if response:  # Only accept if we get actual response
+                        self.movement_status.emit(f"Successfully connected to {port}")
+                        return True
+                
+                self.serial_port.close()
+                self.movement_status.emit(f"No response from {port}")
+                
+            except Exception as e:
+                self.movement_status.emit(f"Port {port} error: {str(e)}")
+                if hasattr(self.serial_port, 'close'):
+                    self.serial_port.close()
                 continue
         
         self.movement_status.emit("Failed to connect to any serial port")
@@ -38,51 +62,81 @@ class MoveRobotThread(QThread):
 
     def _wait_for_completion(self, timeout=10):
         """Wait for 'Movement complete' response from ESP32"""
+        valid_responses = ["Movement complete", "OK"]
         start_time = time.time()
         while (time.time() - start_time) < timeout:
             try:
-                response = self.serial_port.readline().decode().strip()
-                if response == "Movement complete":
-                    return True
-                elif response:  # Log any other responses
-                    self.movement_status.emit(f"Got response: {response}")
+                if self.serial_port.in_waiting:
+                    response = self.serial_port.readline().decode().strip()
+                    if response in valid_responses:
+                        self.movement_status.emit(f"Movement confirmed: {response}")
+                        return True
+                    elif response:  # Log any other responses
+                        self.movement_status.emit(f"Got response: {response}")
             except Exception as e:
                 self.movement_status.emit(f"Error reading response: {str(e)}")
                 return False
+            time.sleep(0.1)
         return False
 
     def _send_command(self, command):
-        """Send command to the robot arm via serial."""
-        try:
-            if not self.serial_port or not self.serial_port.is_open:
-                self._connect_serial()
+        """Send command to the robot arm via serial with enhanced error handling."""
+        max_retries = 3
+        valid_responses = ["OK", "Movement complete"]
+        
+        for attempt in range(max_retries):
+            try:
+                if not self.serial_port or not self.serial_port.is_open:
+                    self._connect_serial()
+                
+                # Clear buffers before sending
+                self.serial_port.reset_input_buffer()
+                self.serial_port.reset_output_buffer()
+                
+                # Format and send command
+                formatted_command = f"{command}\n"
+                self.movement_status.emit(f"Sending command: {formatted_command.strip()}")
+                self.serial_port.write(formatted_command.encode())
+                
+                # Wait for response with timeout
+                start_time = time.time()
+                while (time.time() - start_time) < 2:  # 2 second timeout
+                    if self.serial_port.in_waiting:
+                        response = self.serial_port.readline().decode().strip()
+                        self.movement_status.emit(f"Got response: {response}")
+                        if response in valid_responses:
+                            return True
+                    time.sleep(0.1)
+                
+                self.movement_status.emit(f"Timeout waiting for response (attempt {attempt + 1})")
+            except Exception as e:
+                self.movement_status.emit(f"Error sending command (attempt {attempt + 1}): {str(e)}")
             
-            # Format command for your specific robot protocol
-            formatted_command = f"{command}\n"
-            self.serial_port.write(formatted_command.encode())
-            
-            # Wait for acknowledgment
-            response = self.serial_port.readline().decode().strip()
-            self.movement_status.emit(f"Response: {response}")
-            
-            return response == "OK"
-        except Exception as e:
-            self.movement_status.emit(f"Error sending command: {str(e)}")
-            return False
+            # Wait before retry
+            if attempt < max_retries - 1:
+                time.sleep(1)
+        
+        return False
 
-    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=2):
-        """Execute movement with error handling, configurable retries."""
-        command = f"x{positions[0]},y{positions[1]},z{positions[2]},v{vacuum}"
+    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=3):
+        """Execute movement with enhanced error handling and logging."""
+        # Format command with 3 decimal precision
+        command = f"x{positions[0]:.3f},y{positions[1]:.3f},z{positions[2]:.3f},v{vacuum}"
+        
         for attempt in range(max_attempts):
             self.movement_status.emit(f"{description}: {positions} (Attempt {attempt + 1})")
+            
             if self._send_command(command):
-                # Add wait for completion after successful command send
-                if self._wait_for_completion():
+                if self._wait_for_completion(timeout=5):  # Increased timeout
+                    self.movement_status.emit(f"Movement completed successfully: {command}")
                     return True
-                self.movement_status.emit("Movement timeout")
-            self.movement_status.emit(f"Movement failed on attempt {attempt + 1}")
-            time.sleep(0.1)  # Wait before retrying
-        self.movement_status.emit(f"Failed to execute movement after {max_attempts} attempts.")
+                self.movement_status.emit("Movement timeout - no completion confirmation")
+            
+            if attempt < max_attempts - 1:
+                self.movement_status.emit(f"Retrying movement in 1 second... (Attempt {attempt + 1}/{max_attempts})")
+                time.sleep(1)
+        
+        self.movement_status.emit(f"Failed to execute movement after {max_attempts} attempts")
         return False
 
     def run(self):
