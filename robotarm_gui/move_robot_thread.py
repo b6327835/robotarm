@@ -118,7 +118,7 @@ class MoveRobotThread(QThread):
         
         return False
 
-    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=3):
+    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=0):
         """Execute movement with enhanced error handling and logging."""
         # Format command with 3 decimal precision
         command = f"x{positions[0]:.3f},y{positions[1]:.3f},z{positions[2]:.3f},v{vacuum}"

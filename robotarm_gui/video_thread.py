@@ -127,21 +127,47 @@ class VideoThread(QThread):
 
             # Draw box if we have all 4 corners
             if len(temp_positions) == 4:
+                # Get corners in order (0,1,2,3)
+                corners_ordered = [temp_positions[i] for i in range(4)]
+                
+                # Draw rectangle sides
                 for i in range(4):
-                    pt1 = temp_positions[i]
-                    pt2 = temp_positions[(i + 1) % 4]
-                    # Convert to integers for drawing
+                    pt1 = corners_ordered[i]
+                    pt2 = corners_ordered[(i + 1) % 4]
                     pt1_int = (int(pt1[0]), int(pt1[1]))
                     pt2_int = (int(pt2[0]), int(pt2[1]))
                     cv2.line(cv_img, pt1_int, pt2_int, (0, 255, 0), 2)
 
-                # Update box boundaries for object detection
+                # Calculate midpoints of the top and bottom edges
+                top_mid_x = (corners_ordered[0][0] + corners_ordered[1][0]) / 2
+                top_mid_y = (corners_ordered[0][1] + corners_ordered[1][1]) / 2
+                bottom_mid_x = (corners_ordered[2][0] + corners_ordered[3][0]) / 2
+                bottom_mid_y = (corners_ordered[2][1] + corners_ordered[3][1]) / 2
+
+                # Draw split line through midpoints
+                cv2.line(cv_img,
+                        (int(top_mid_x), int(top_mid_y)),
+                        (int(bottom_mid_x), int(bottom_mid_y)),
+                        (255, 0, 0), 2)  # Blue line
+
+                # Update box boundaries
                 x_coords = [x for x, y in temp_positions.values()]
                 y_coords = [y for x, y in temp_positions.values()]
                 x_fixed = min(x_coords)
                 y_fixed = min(y_coords)
                 box_width = max(x_coords) - x_fixed
                 box_height = max(y_coords) - y_fixed
+
+                # Function to check if a point is on the left side of the split line
+                def is_left_side(px, py):
+                    # Vector from top mid to bottom mid
+                    dx = bottom_mid_x - top_mid_x
+                    dy = bottom_mid_y - top_mid_y
+                    # Vector from top mid to point
+                    pdx = px - top_mid_x
+                    pdy = py - top_mid_y
+                    # Cross product
+                    return (dx * pdy - dy * pdx) > 0
 
                 # Check for marker ID 4 inside the box boundaries
                 if ids is not None:
@@ -178,6 +204,7 @@ class VideoThread(QThread):
                 # Rest of the existing detection code
                 contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 detected_objects = []
+                pickable_objects = []  # New list for objects on the left side
 
                 for contour in contours:
                     area = cv2.contourArea(contour)
@@ -196,12 +223,20 @@ class VideoThread(QThread):
                                     
                                     # Only add if within the fixed box
                                     if (x_fixed <= target_x <= x_fixed + box_width) and (y_fixed <= target_y <= y_fixed + box_height):
-                                        detected_objects.append(("Circle", target_x, target_y))
+                                        # Use new split line check instead of mid_x
+                                        is_pickable = is_left_side(target_x, target_y)
+                                        object_info = ("Circle", target_x, target_y, is_pickable)
+                                        detected_objects.append(object_info)
+                                        if is_pickable:
+                                            pickable_objects.append(object_info)
 
+                # Sort objects by x coordinate
+                pickable_objects.sort(key=lambda obj: obj[1])
                 detected_objects.sort(key=lambda obj: obj[1])
 
-                if detected_objects:
-                    highest_priority = detected_objects[0]
+                # Only emit signal for the first pickable object
+                if pickable_objects:
+                    highest_priority = pickable_objects[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
                     
                     # Add depth measurement for RealSense
@@ -221,13 +256,26 @@ class VideoThread(QThread):
                         tar_x = 0
                     self.target_signal.emit(tar_x, tar_y)
 
-                # Draw detected objects with converted coordinates and depth
-                for priority, (shape_type, target_x, target_y) in enumerate(detected_objects, start=1):
-                    cv2.circle(cv_img, (target_x, target_y), 5, (0, 0, 255), -1)
+                # Draw all detected objects with different colors based on pickable status
+                pickable_priority = 1  # Separate counter for pickable objects
+                
+                for obj in detected_objects:
+                    shape_type, target_x, target_y, is_pickable = obj
+                    # Use green for pickable objects, red for non-pickable
+                    color = (0, 255, 0) if is_pickable else (0, 0, 255)
+                    cv2.circle(cv_img, (target_x, target_y), 5, color, -1)
+                    
                     y_rel = (target_y - y_fixed) / box_height
                     x_rel = (target_x - x_fixed) / box_width
                     conv_x = 135 - (y_rel * 135)
                     conv_y = 145 - (x_rel * 140)
+                    
+                    # Only show priority number for pickable objects
+                    if is_pickable:
+                        status_text = f"P{pickable_priority}:Pickable"
+                        pickable_priority += 1
+                    else:
+                        status_text = "Not Pickable"
                     
                     # Get depth for this object if using RealSense
                     if self.use_realsense and depth_frame:
@@ -237,14 +285,14 @@ class VideoThread(QThread):
                     else:
                         depth_text = ""
 
-                    # Draw coordinates and depth
+                    # Draw object information
                     cv2.putText(
                         cv_img,
-                        f"P{priority}:X{target_x},Y{target_y}",
+                        status_text,
                         (target_x - 10, target_y - 15),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.4,
-                        (0, 255, 0),
+                        color,
                         1,
                     )
                     cv2.putText(
@@ -253,7 +301,7 @@ class VideoThread(QThread):
                         (target_x - 10, target_y),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.4,
-                        (0, 255, 0),
+                        color,
                         1,
                     )
 
