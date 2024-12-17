@@ -4,5 +4,7 @@ log/
 .vscode/
 *.pt
 GUIVision/__pycache__/
+robotarm_gui/__pycache__/
 myenv/
 venv/
+screenshot/
