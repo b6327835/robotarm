@@ -15,10 +15,12 @@ class MoveRobotThread(QThread):
         self.dest_y = round(dest_y, 3)
         self.mode = mode
         self.serial_port = None
-        self._connect_serial()
 
     def _connect_serial(self):
-        """Try to connect to various common serial ports"""
+        """Only connect if no existing connection"""
+        if self.serial_port and self.serial_port.is_open:
+            return True
+            
         possible_ports = [
             '/dev/ttyUSB0', '/dev/ttyUSB1',
             '/dev/ttyACM0', '/dev/ttyACM1',
@@ -28,60 +30,83 @@ class MoveRobotThread(QThread):
         for port in possible_ports:
             self.movement_status.emit(f"Trying port {port}...")
             try:
-                self.serial_port = serial.Serial(
-                    port=port,
-                    baudrate=115200,
-                    timeout=2,
-                    write_timeout=2
-                )
-                # Clear any pending data
+                self.serial_port = serial.Serial()
+                self.serial_port.port = port
+                self.serial_port.baudrate = 115200
+                self.serial_port.timeout = 2
+                self.serial_port.write_timeout = 2
+                
+                # Disable flow control before opening
+                self.serial_port.dsrdtr = False
+                self.serial_port.rtscts = False
+                
+                # Open port
+                self.serial_port.open()
+                
+                # Set DTR/RTS after opening
+                self.serial_port.dtr = False
+                self.serial_port.rts = False
+                time.sleep(0.1)  # Allow signals to stabilize
+                
+                # Clear buffers
                 self.serial_port.reset_input_buffer()
                 self.serial_port.reset_output_buffer()
                 
                 # Test communication
                 self.serial_port.write(b"test\n")
-                time.sleep(0.5)  # Give device time to respond
+                time.sleep(0.5)
                 
                 if self.serial_port.in_waiting:
                     response = self.serial_port.readline().decode().strip()
-                    if response:  # Only accept if we get actual response
+                    if response:
                         self.movement_status.emit(f"Successfully connected to {port}")
                         return True
                 
+                # Proper closing sequence
+                self.serial_port.dtr = False
+                self.serial_port.rts = False
+                time.sleep(0.1)
                 self.serial_port.close()
                 self.movement_status.emit(f"No response from {port}")
                 
             except Exception as e:
                 self.movement_status.emit(f"Port {port} error: {str(e)}")
                 if hasattr(self.serial_port, 'close'):
+                    self.serial_port.dtr = False
+                    self.serial_port.rts = False
+                    time.sleep(0.1)
                     self.serial_port.close()
                 continue
-        
+
         self.movement_status.emit("Failed to connect to any serial port")
         raise Exception("Could not connect to any available serial port")
 
     def _wait_for_completion(self, timeout=10):
-        """Wait for 'Movement complete' response from ESP32"""
+        """Wait for 'Movement complete' response from ESP32."""
         valid_responses = ["Movement complete", "OK"]
         start_time = time.time()
         while (time.time() - start_time) < timeout:
             try:
                 if self.serial_port.in_waiting:
-                    response = self.serial_port.readline().decode().strip()
-                    if response in valid_responses:
+                    raw_response = self.serial_port.readline()
+                    response = raw_response.decode('utf-8', errors='ignore').strip()
+                    print(f"[SERIAL RECV] <<< {repr(response)}")
+                    self.movement_status.emit(f"Got response: {response}")
+                    # Ensure exact match
+                    if any(response.lower() == valid_resp.lower() for valid_resp in valid_responses):
                         self.movement_status.emit(f"Movement confirmed: {response}")
                         return True
-                    elif response:  # Log any other responses
-                        self.movement_status.emit(f"Got response: {response}")
+                time.sleep(0.1)
             except Exception as e:
+                print(f"[SERIAL ERROR] {str(e)}")
                 self.movement_status.emit(f"Error reading response: {str(e)}")
                 return False
-            time.sleep(0.1)
+        print("[SERIAL TIMEOUT] Movement completion timeout")
         return False
 
     def _send_command(self, command):
         """Send command to the robot arm via serial with enhanced error handling."""
-        max_retries = 3
+        max_retries = 2
         valid_responses = ["OK", "Movement complete"]
         
         for attempt in range(max_retries):
@@ -95,21 +120,26 @@ class MoveRobotThread(QThread):
                 
                 # Format and send command
                 formatted_command = f"{command}\n"
+                print(f"\n[SERIAL SEND] >>> {formatted_command.strip()}")
                 self.movement_status.emit(f"Sending command: {formatted_command.strip()}")
                 self.serial_port.write(formatted_command.encode())
                 
                 # Wait for response with timeout
                 start_time = time.time()
-                while (time.time() - start_time) < 2:  # 2 second timeout
+                while (time.time() - start_time) < 5:  # 5 second timeout
                     if self.serial_port.in_waiting:
-                        response = self.serial_port.readline().decode().strip()
+                        raw_response = self.serial_port.readline()
+                        response = raw_response.decode('utf-8', errors='ignore').strip()
+                        print(f"[SERIAL RECV] <<< {response}")
                         self.movement_status.emit(f"Got response: {response}")
                         if response in valid_responses:
                             return True
                     time.sleep(0.1)
                 
+                print("[SERIAL TIMEOUT] No response received")
                 self.movement_status.emit(f"Timeout waiting for response (attempt {attempt + 1})")
             except Exception as e:
+                print(f"[SERIAL ERROR] {str(e)}")
                 self.movement_status.emit(f"Error sending command (attempt {attempt + 1}): {str(e)}")
             
             # Wait before retry
@@ -140,9 +170,16 @@ class MoveRobotThread(QThread):
         return False
 
     def run(self):
+        serial_owned = False
         try:
+            if not self.serial_port:
+                self._connect_serial()
+                serial_owned = True
+            
             def move():
-                return self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Moving to position")
+                print("[DEBUG] Executing move command...")
+                return self._execute_movement([self.x, self.y, self.z], vacuum=0, description="Moving to position", max_attempts=3)
+            
             def pnp():
                 pnp_x = self.x
                 pnp_y = self.y
@@ -217,13 +254,19 @@ class MoveRobotThread(QThread):
             
             print(f"Starting movement in mode: {self.mode}")
             if self.mode in movement_functions:
-                movement_functions[self.mode]()
+                result = movement_functions[self.mode]()
+                print(f"Movement result: {result}")
             else:
                 self.movement_status.emit(f"Invalid movement mode: {self.mode}")
             print("Movement function completed.")
+            
         except Exception as e:
             self.movement_status.emit(f"Error: {str(e)}")
             print(f"Exception in MoveRobotThread: {e}")
         finally:
-            self.serial_port.close()
+            # Only close if we created the connection
+            if serial_owned and self.serial_port and self.serial_port.is_open:
+                print("Closing thread-owned serial connection")
+                # Do not set DTR/RTS when closing; just close the port
+                self.serial_port.close()
             print("MoveRobotThread completed.")
