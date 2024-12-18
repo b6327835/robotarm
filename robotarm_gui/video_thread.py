@@ -130,13 +130,64 @@ class VideoThread(QThread):
                 # Get corners in order (0,1,2,3)
                 corners_ordered = [temp_positions[i] for i in range(4)]
                 
-                # Draw rectangle sides
+                # Draw original rectangle sides
                 for i in range(4):
                     pt1 = corners_ordered[i]
                     pt2 = corners_ordered[(i + 1) % 4]
                     pt1_int = (int(pt1[0]), int(pt1[1]))
                     pt2_int = (int(pt2[0]), int(pt2[1]))
                     cv2.line(cv_img, pt1_int, pt2_int, (0, 255, 0), 2)
+
+                # Draw extended rectangle
+                # Calculate width and height of original rectangle
+                rect_width = max(corners_ordered[1][0], corners_ordered[2][0]) - min(corners_ordered[0][0], corners_ordered[3][0])
+                rect_height = max(corners_ordered[2][1], corners_ordered[3][1]) - min(corners_ordered[0][1], corners_ordered[1][1])
+                
+                # Calculate extension points with actual gap
+                gap = 10  # 200-pixel gap
+                # First draw the original bottom rectangle
+                bottom_corners = [
+                    corners_ordered[0],  # Original top-left
+                    corners_ordered[1],  # Original top-right
+                    corners_ordered[2],  # Original bottom-right
+                    corners_ordered[3]   # Original bottom-left
+                ]
+                
+                # Then draw the top rectangle with gap
+                top_corners = [
+                    (corners_ordered[0][0], corners_ordered[0][1] - gap),  # Top-left start
+                    (corners_ordered[1][0], corners_ordered[1][1] - gap),  # Top-right start
+                    (corners_ordered[1][0], corners_ordered[1][1] - gap - rect_height),  # Top-right end
+                    (corners_ordered[0][0], corners_ordered[0][1] - gap - rect_height)   # Top-left end
+                ]
+                
+                # Draw bottom rectangle
+                for i in range(4):
+                    pt1 = bottom_corners[i]
+                    pt2 = bottom_corners[(i + 1) % 4]
+                    pt1_int = (int(pt1[0]), int(pt1[1]))
+                    pt2_int = (int(pt2[0]), int(pt2[1]))
+                    cv2.line(cv_img, pt1_int, pt2_int, (0, 255, 0), 2)
+
+                # Draw top rectangle
+                for i in range(4):
+                    pt1 = top_corners[i]
+                    pt2 = top_corners[(i + 1) % 4]
+                    pt1_int = (int(pt1[0]), int(pt1[1]))
+                    pt2_int = (int(pt2[0]), int(pt2[1]))
+                    cv2.line(cv_img, pt1_int, pt2_int, (0, 255, 0), 2)
+
+                # Add horizontal split line for top rectangle
+                left_mid_x = (top_corners[0][0] + top_corners[3][0]) / 2
+                left_mid_y = (top_corners[0][1] + top_corners[3][1]) / 2
+                right_mid_x = (top_corners[1][0] + top_corners[2][0]) / 2
+                right_mid_y = (top_corners[1][1] + top_corners[2][1]) / 2
+                
+                # Draw yellow horizontal split line
+                cv2.line(cv_img,
+                        (int(left_mid_x), int(left_mid_y)),
+                        (int(right_mid_x), int(right_mid_y)),
+                        (0, 255, 255), 2)  # Yellow line (BGR format)
 
                 # Calculate midpoints of the top and bottom edges
                 top_mid_x = (corners_ordered[0][0] + corners_ordered[1][0]) / 2
@@ -168,6 +219,17 @@ class VideoThread(QThread):
                     pdy = py - top_mid_y
                     # Cross product
                     return (dx * pdy - dy * pdx) > 0
+
+                # Add function to check if point is in top half of upper rectangle
+                def is_top_half(px, py, left_mid_x, left_mid_y, right_mid_x, right_mid_y):
+                    # Vector from left to right of split line
+                    dx = right_mid_x - left_mid_x
+                    dy = right_mid_y - left_mid_y
+                    # Vector from left mid to point
+                    pdx = px - left_mid_x
+                    pdy = py - left_mid_y
+                    # Cross product (negative because coordinate system is flipped)
+                    return -(dx * pdy - dy * pdx) > 0
 
                 # Check for marker ID 4 inside the box boundaries
                 if ids is not None:
@@ -204,8 +266,10 @@ class VideoThread(QThread):
                 # Rest of the existing detection code
                 contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 detected_objects = []
-                pickable_objects = []  # New list for objects on the left side
+                pickable_objects_bottom = []  # For bottom rectangle
+                pickable_objects_top = []     # For top rectangle
 
+                # Modify object detection to include both rectangles
                 for contour in contours:
                     area = cv2.contourArea(contour)
                     if 202 <= area <= 900:  # Updated area thresholds
@@ -221,22 +285,58 @@ class VideoThread(QThread):
                                     target_x = int(M['m10'] / M['m00'])
                                     target_y = int(M['m01'] / M['m00'])
                                     
-                                    # Only add if within the fixed box
-                                    if (x_fixed <= target_x <= x_fixed + box_width) and (y_fixed <= target_y <= y_fixed + box_height):
-                                        # Use new split line check instead of mid_x
+                                    # Check if object is in bottom rectangle
+                                    in_bottom_rect = (x_fixed <= target_x <= x_fixed + box_width) and (y_fixed <= target_y <= y_fixed + box_height)
+                                    
+                                    # Check if object is in top rectangle
+                                    top_rect_y_start = corners_ordered[0][1] - gap - rect_height
+                                    top_rect_y_end = corners_ordered[0][1] - gap
+                                    in_top_rect = (x_fixed <= target_x <= x_fixed + box_width) and (top_rect_y_start <= target_y <= top_rect_y_end)
+
+                                    if in_bottom_rect:
+                                        # Original logic for bottom rectangle
                                         is_pickable = is_left_side(target_x, target_y)
-                                        object_info = ("Circle", target_x, target_y, is_pickable)
+                                        object_info = ("Circle", target_x, target_y, is_pickable, "bottom")
                                         detected_objects.append(object_info)
                                         if is_pickable:
-                                            pickable_objects.append(object_info)
+                                            pickable_objects_bottom.append(object_info)
+                                    elif in_top_rect:
+                                        # New logic for top rectangle
+                                        is_pickable = is_top_half(target_x, target_y, left_mid_x, left_mid_y, right_mid_x, right_mid_y)
+                                        object_info = ("Circle", target_x, target_y, is_pickable, "top")
+                                        detected_objects.append(object_info)
+                                        if is_pickable:
+                                            pickable_objects_top.append(object_info)
 
-                # Sort objects by x coordinate
-                pickable_objects.sort(key=lambda obj: obj[1])
+                # Sort objects by x coordinate separately for each rectangle
+                pickable_objects_bottom.sort(key=lambda obj: obj[1])
+                pickable_objects_top.sort(key=lambda obj: obj[1])
                 detected_objects.sort(key=lambda obj: obj[1])
 
-                # Only emit signal for the first pickable object
-                if pickable_objects:
-                    highest_priority = pickable_objects[0]
+                # Only emit signal for the first pickable object (you can choose which list to prioritize)
+                # Here we're checking bottom first, but you can modify this logic
+                if pickable_objects_bottom:
+                    highest_priority = pickable_objects_bottom[0]
+                    target_x, target_y = highest_priority[1], highest_priority[2]
+                    
+                    # Add depth measurement for RealSense
+                    if self.use_realsense and depth_frame:
+                        depth_value = depth_frame.get_distance(target_x, target_y)
+                        # Convert depth to mm
+                        depth_mm = int(depth_value * 1000)
+                    else:
+                        depth_mm = None
+
+                    y_relative = (target_y - y_fixed) / box_height
+                    x_relative = (target_x - x_fixed) / box_width
+
+                    tar_x = (135 - (y_relative * 135))-(4)
+                    tar_y = (145 - (x_relative * 140))-(0)
+                    if tar_x < 0:
+                        tar_x = 0
+                    self.target_signal.emit(tar_x, tar_y)
+                elif pickable_objects_top:
+                    highest_priority = pickable_objects_top[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
                     
                     # Add depth measurement for RealSense
@@ -256,27 +356,36 @@ class VideoThread(QThread):
                         tar_x = 0
                     self.target_signal.emit(tar_x, tar_y)
 
-                # Draw all detected objects with different colors based on pickable status
-                pickable_priority = 1  # Separate counter for pickable objects
+                # Modified drawing code for objects with separate priority counters
+                bottom_priority = 1  # Counter for bottom rectangle
+                top_priority = 1     # Counter for top rectangle
                 
                 for obj in detected_objects:
-                    shape_type, target_x, target_y, is_pickable = obj
-                    # Use green for pickable objects, red for non-pickable
+                    shape_type, target_x, target_y, is_pickable, rect_location = obj
                     color = (0, 255, 0) if is_pickable else (0, 0, 255)
                     cv2.circle(cv_img, (target_x, target_y), 5, color, -1)
                     
-                    y_rel = (target_y - y_fixed) / box_height
-                    x_rel = (target_x - x_fixed) / box_width
-                    conv_x = 135 - (y_rel * 135)
-                    conv_y = 145 - (x_rel * 140)
+                    if rect_location == "bottom":
+                        y_rel = (target_y - y_fixed) / box_height
+                        x_rel = (target_x - x_fixed) / box_width
+                        conv_x = 135 - (y_rel * 135)
+                        conv_y = 145 - (x_rel * 140)
+                    else:  # top rectangle
+                        y_rel = (target_y - top_rect_y_start) / rect_height
+                        x_rel = (target_x - x_fixed) / box_width
+                        conv_x = 135 - (y_rel * 135)
+                        conv_y = 145 - (x_rel * 140)
                     
-                    # Only show priority number for pickable objects
                     if is_pickable:
-                        status_text = f"P{pickable_priority}:Pickable"
-                        pickable_priority += 1
+                        if rect_location == "bottom":
+                            status_text = f"B{bottom_priority}:Pickable"
+                            bottom_priority += 1
+                        else:  # top rectangle
+                            status_text = f"T{top_priority}:Pickable"
+                            top_priority += 1
                     else:
-                        status_text = "Not Pickable"
-                    
+                        status_text = ""
+
                     # Get depth for this object if using RealSense
                     if self.use_realsense and depth_frame:
                         depth_value = depth_frame.get_distance(target_x, target_y)
