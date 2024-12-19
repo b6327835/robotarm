@@ -3,9 +3,9 @@ install/
 log/
 .vscode/
 *.pt
-GUIVision/__pycache__/
-robotarm_gui/__pycache__/
 myenv/
 venv/
 screenshot/
-robotarm_gui/__pycache__
+
+**/__pycache__/
+**/*.pyc
