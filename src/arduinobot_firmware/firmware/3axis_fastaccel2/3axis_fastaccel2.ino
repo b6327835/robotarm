@@ -239,6 +239,8 @@ void moveToPosition(float x, float y, float z, int vacuum, float microstepping, 
   }
   
   Serial.println("Movement complete");
+  Serial.println("OK");
+
 }
 
 void blinkError() {
