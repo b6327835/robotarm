@@ -15,7 +15,7 @@ import numpy as np
 from ultralytics import YOLO
 from threading import Thread
 from move_robot_thread import MoveRobotThread
-from video_thread import VideoThread
+from video.video_thread import VideoThread
 import queue
 from auto_pnp_thread import AutoPnPThread
 from gui_init import GUIInitializer
