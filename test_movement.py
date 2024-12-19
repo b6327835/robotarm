@@ -30,7 +30,7 @@ def main():
         robot.wait()
         print("First movement completed")
         
-        time.sleep(2)
+        time.sleep(0.5)
         
         # Move back home
         print("\n=== Second Movement ===")
