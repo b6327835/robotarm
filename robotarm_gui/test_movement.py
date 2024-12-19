@@ -1,5 +1,5 @@
-from robotarm_gui.robot_controller import RobotController
-from robotarm_gui.move_robot_thread import MoveRobotThread
+from robot_controller import RobotController
+from move_robot_thread import MoveRobotThread
 import time
 import serial.tools.list_ports
 

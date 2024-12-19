@@ -4,6 +4,8 @@ import numpy as np
 from aruco_markers_detect import ArucoMarkerPosition
 import pyrealsense2 as rs
 from color_detection import ColorDetector    # Add this import
+import pickle
+import os
 
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
@@ -11,10 +13,11 @@ class VideoThread(QThread):
     # Add new signal for grid start position
     grid_start_signal = pyqtSignal(float, float)
 
-    def __init__(self, use_realsense=True):    # Add camera type parameter
+    def __init__(self, use_realsense=True, use_calibration=False):    # Add use_calibration parameter
         super().__init__()
         self.detect_mode = "black"
         self.use_realsense = use_realsense
+        self.use_calibration = use_calibration  # Add new flag
         self.cap = None
         self.grid_start_found = False
         
@@ -48,6 +51,19 @@ class VideoThread(QThread):
         # Initialize detector with existing camera
         self.aruco_detector = ArucoMarkerPosition(display_output=False, existing_cap=self.cap)
 
+        # Load camera calibration data if use_calibration is True
+        self.camera_matrix = None
+        self.dist_coeffs = None
+        if self.use_calibration:  # Only load calibration if flag is True
+            calibration_file = '../../../calibration/realsense_calibration.pkl' if use_realsense else '../../../calibration/camera_calibration.pkl'
+            
+            if os.path.exists(calibration_file):
+                with open(calibration_file, 'rb') as f:
+                    calibration_data = pickle.load(f)
+                    self.camera_matrix = calibration_data['camera_matrix']
+                    self.dist_coeffs = calibration_data['dist_coeffs']
+                    print(f"Camera calibration loaded successfully from {calibration_file}")
+
     def run(self):
         while True:
             if self.use_realsense:
@@ -70,6 +86,10 @@ class VideoThread(QThread):
             if not ret:
                 print("Error: Failed to grab frame.")
                 break
+
+            # Apply undistortion only if calibration is enabled and data is available
+            if self.use_calibration and self.camera_matrix is not None and self.dist_coeffs is not None:
+                cv_img = cv2.undistort(cv_img, self.camera_matrix, self.dist_coeffs)
 
             cv_img = cv2.resize(cv_img, (640, 480))
             
@@ -268,11 +288,19 @@ class VideoThread(QThread):
                 detected_objects = []
                 pickable_objects_bottom = []  # For bottom rectangle
                 pickable_objects_top = []     # For top rectangle
+                previous_centers = []  # List to store centers of detected objects
+
+                def check_min_distance(center, previous_centers, min_distance=3):
+                    for prev_center in previous_centers:
+                        dist = np.sqrt((center[0] - prev_center[0])**2 + (center[1] - prev_center[1])**2)
+                        if dist < min_distance:
+                            return False
+                    return True
 
                 # Modify object detection to include both rectangles
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if 202 <= area <= 900:  # Updated area thresholds
+                    if 11 <= area <= 74:  # Updated area thresholds
                         # Rest of the contour processing
                         perimeter = cv2.arcLength(contour, True)
                         if perimeter > 0:
@@ -285,6 +313,11 @@ class VideoThread(QThread):
                                     target_x = int(M['m10'] / M['m00'])
                                     target_y = int(M['m01'] / M['m00'])
                                     
+                                    # Check minimum distance from previously detected objects
+                                    if not check_min_distance((target_x, target_y), previous_centers):
+                                        continue
+                                    
+                                    previous_centers.append((target_x, target_y))
                                     # Check if object is in bottom rectangle
                                     in_bottom_rect = (x_fixed <= target_x <= x_fixed + box_width) and (y_fixed <= target_y <= y_fixed + box_height)
                                     
