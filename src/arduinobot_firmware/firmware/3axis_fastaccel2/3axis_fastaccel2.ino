@@ -33,24 +33,17 @@ const int32_t HOMING_ACCEL = 90000;  // Reduced for gentler movement
 const int32_t BACKOFF_STEPS = 0;      // Steps to back off after hitting limit
 
 // Motor Configuration Constants
-const float STEP_ANGLE = 0.36;                    // Degrees per step
-const int STEPS_PER_REV = (int)(360 / STEP_ANGLE); // 1000 steps per revolution
+const float STEPS_PER_MM = 266.67;  // 3.75 μm per step (266.67 steps/mm)
+const int32_t MAX_SPEED = 40000;    // Steps per second
+const int32_t ACCELERATION = 160000; // Steps per second per second
 
-// Fixed configuration parameters
-const float MICROSTEPPING = 16.0;
-const float LEAD_SCREW_PITCH = 2.0;
-const int32_t MAX_SPEED = 40000;
-const int32_t ACCELERATION = 160000;
+float microstepping = 16;  // 1/16 microstepping
+float leadScrewPitch = 2.0;  // 2mm lead screw pitch
 
-// Maximum coordinate limits
-const float MAX_X = 10.0;
-const float MAX_Y = 6.5;
-const float MAX_Z = 7.1;
-
-// ROS coordinate system limits
-const float ROS_MAX_X = 240.0;
-const float ROS_MAX_Y = 150.0;
-const float ROS_MAX_Z = 120.0;
+// Maximum coordinate limits (in mm)
+const float MAX_X = 300.0;
+const float MAX_Y = 200.0;
+const float MAX_Z = 200.0;
 
 const int DEBOUNCE_DELAY = 10;
 const int CONSISTENT_READINGS = 3;
@@ -95,14 +88,7 @@ void setup() {
 
 // Convert millimeters to steps with improved precision
 int32_t mmToSteps(float mm, float stepsPerMm) {
-  return (int32_t)(mm * stepsPerMm + 0.5f); // Added 0.5 for proper rounding
-}
-
-// Map ROS coordinates to robot coordinates
-void mapROStoRobot(float &x, float &y, float &z) {
-    x = (x / ROS_MAX_X) * MAX_X;
-    y = (y / ROS_MAX_Y) * MAX_Y;
-    z = (z / ROS_MAX_Z) * MAX_Z;
+  return (int32_t)(mm * STEPS_PER_MM + 0.5f); // Added 0.5 for proper rounding
 }
 
 // Updated function to parse coordinates
@@ -121,6 +107,11 @@ bool parseCoordinates(String input, float &x, float &y, float &z, int &vacuum) {
   
   if (lastX == -1 || lastY == -1 || lastZ == -1) {
     Serial.println("Error: Missing coordinate markers");
+    Serial.printf("Current positions - X:%d Y:%d Z:%d\n", 
+      stepperX->getCurrentPosition(),
+      stepperY->getCurrentPosition(),
+      stepperZ->getCurrentPosition());
+
     return false;
   }
   
@@ -132,6 +123,11 @@ bool parseCoordinates(String input, float &x, float &y, float &z, int &vacuum) {
   
   if (xEnd == -1 || yEnd == -1 || zEnd == -1) {
     Serial.println("Error: Invalid coordinate format");
+    Serial.printf("Current positions - X:%d Y:%d Z:%d\n", 
+      stepperX->getCurrentPosition(),
+      stepperY->getCurrentPosition(),
+      stepperZ->getCurrentPosition());
+
     return false;
   }
   
@@ -147,56 +143,49 @@ bool parseCoordinates(String input, float &x, float &y, float &z, int &vacuum) {
   zStr.replace(",", "");
   vStr.replace(",", "");
   
-  // Convert to values
+  // Convert to values (already in mm)
   x = xStr.toFloat();
   y = yStr.toFloat();
   z = zStr.toFloat();
   vacuum = vStr.toInt();
   
-  // Map ROS coordinates to robot coordinates
-  mapROStoRobot(x, y, z);
-  
-  // Debug output
-  Serial.printf("Raw substrings - X:'%s' Y:'%s' Z:'%s'\n", xStr.c_str(), yStr.c_str(), zStr.c_str());
-  Serial.printf("Parsed coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
-  Serial.printf("ROS coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x * (ROS_MAX_X/MAX_X), y * (ROS_MAX_Y/MAX_Y), z * (ROS_MAX_Z/MAX_Z));
-  Serial.printf("Mapped coordinates - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
+  // Debug output in mm
+  Serial.printf("Parsed coordinates (mm) - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
   
   return true;
 }
 
 bool validateCoordinates(float x, float y, float z) {
   if (x < 0 || x > MAX_X || y < 0 || y > MAX_Y || z < 0 || z > MAX_Z) {
-    Serial.printf("Error: Coordinates out of bounds. Limits are: X:0-%0.1f Y:0-%0.1f Z:0-%0.1f\n", 
+    Serial.printf("Error: Coordinates out of bounds. Limits are: X:0-%0.1f Y:0-%0.1f Z:0-%0.1f mm\n", 
                  MAX_X, MAX_Y, MAX_Z);
     return false;
   }
   return true;
 }
 
-void moveToPosition(float x, float y, float z, int vacuum, float microstepping, float leadScrewPitch, int32_t maxSpeed, int32_t acceleration) {
+// Update moveToPosition signature to remove unused parameters
+void moveToPosition(float x, float y, float z, int vacuum) {
   if (!validateCoordinates(x, y, z)) {
     return;
   }
-  
-  float stepsPerMm = (STEPS_PER_REV * microstepping) / leadScrewPitch;
 
-  // Configure speed and acceleration
-  stepperX->setSpeedInHz(maxSpeed);
-  stepperY->setSpeedInHz(maxSpeed);
-  stepperZ->setSpeedInHz(maxSpeed);
-  
-  stepperX->setAcceleration(acceleration);
-  stepperY->setAcceleration(acceleration);
-  stepperZ->setAcceleration(acceleration);
-  
   // Convert millimeters to steps
-  int32_t xSteps = mmToSteps(x, stepsPerMm);
-  int32_t ySteps = mmToSteps(y, stepsPerMm);
-  int32_t zSteps = mmToSteps(z, stepsPerMm);
+  int32_t xSteps = mmToSteps(x, STEPS_PER_MM);
+  int32_t ySteps = mmToSteps(y, STEPS_PER_MM);
+  int32_t zSteps = mmToSteps(z, STEPS_PER_MM);
+  
+  // Configure speed and acceleration
+  stepperX->setSpeedInHz(MAX_SPEED);
+  stepperY->setSpeedInHz(MAX_SPEED);
+  stepperZ->setSpeedInHz(MAX_SPEED);
+  
+  stepperX->setAcceleration(ACCELERATION);
+  stepperY->setAcceleration(ACCELERATION);
+  stepperZ->setAcceleration(ACCELERATION);
   
   // Debug output for steps calculation
-  Serial.printf("Steps per mm: %.2f\n", stepsPerMm);
+  Serial.printf("Steps per mm: %.2f\n", STEPS_PER_MM);
   Serial.printf("Target steps - X:%d Y:%d Z:%d\n", xSteps, ySteps, zSteps);
   
   // Move all motors to target positions
@@ -361,11 +350,11 @@ void moveToMax() {
   resetVacuum();
   
   // Move X axis first
-  moveToPosition(MAX_X, 0, 0, 0, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+  moveToPosition(MAX_X, 0, 0, 0);
   // Then Y axis
-  moveToPosition(MAX_X, MAX_Y, 0, 0, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+  moveToPosition(MAX_X, MAX_Y, 0, 0);
   // Finally Z axis
-  moveToPosition(MAX_X, MAX_Y, MAX_Z, 0, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+  moveToPosition(MAX_X, MAX_Y, MAX_Z, 0);
   
   Serial.println("Reached maximum position!");
 }
@@ -399,7 +388,7 @@ void loop() {
     float x, y, z;
     int vacuum;
     if (parseCoordinates(input, x, y, z, vacuum)) {
-      moveToPosition(x, y, z, vacuum, MICROSTEPPING, LEAD_SCREW_PITCH, MAX_SPEED, ACCELERATION);
+      moveToPosition(x, y, z, vacuum);
     }
   }
 }
