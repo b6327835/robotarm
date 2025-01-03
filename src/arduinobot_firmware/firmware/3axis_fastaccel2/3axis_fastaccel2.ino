@@ -33,7 +33,7 @@ const int32_t HOMING_ACCEL = 90000;  // Reduced for gentler movement
 const int32_t BACKOFF_STEPS = 0;      // Steps to back off after hitting limit
 
 // Motor Configuration Constants
-const float STEPS_PER_MM = 266.67;  // 3.75 μm per step (266.67 steps/mm)
+const float STEPS_PER_MM = 266.67;  // 3.75 μm per step (266.67 steps/mm) (or 8000)
 const int32_t MAX_SPEED = 40000;    // Steps per second
 const int32_t ACCELERATION = 160000; // Steps per second per second
 
@@ -250,7 +250,7 @@ bool homeOneAxis(FastAccelStepper* stepper, int limitPin, const char* axisName) 
   // Set direction for continuous movement
   stepper->setSpeedInHz(HOMING_SPEED);
   stepper->setAcceleration(HOMING_ACCEL);
-  stepper->moveTo(-100000);
+  stepper->moveTo(-64,000); //(200mm + 20%) x 266.67 steps/mm = 64,000
   
   while (consistentCount < CONSISTENT_READINGS) {
     bool currentReading = digitalRead(limitPin);
@@ -359,10 +359,68 @@ void moveToMax() {
   Serial.println("Reached maximum position!");
 }
 
+bool handleForceCommand(String input) {
+  input.trim();
+  if (!input.startsWith("FORCE ")) {
+    return false;
+  }
+  
+  // Remove "FORCE " prefix and split remaining string
+  input = input.substring(6);
+  int spaceIndex = input.indexOf(' ');
+  if (spaceIndex == -1) {
+    Serial.println("Error: Invalid FORCE command format. FORCE variable value\nexample: FORCE isHomed true\nexample: FORCE posX 100.0");
+    return true;
+  }
+  
+  String variable = input.substring(0, spaceIndex);
+  String value = input.substring(spaceIndex + 1);
+  value.trim();
+  
+  // Handle different variables
+  if (variable.equals("isHomed")) {
+    isHomed = value.equals("true");
+    Serial.printf("Forced isHomed to %s\n", isHomed ? "true" : "false");
+  }
+  else if (variable.equals("isPicking")) {
+    isPicking = value.equals("true");
+    Serial.printf("Forced isPicking to %s\n", isPicking ? "true" : "false");
+  }
+  else if (variable.equals("isPlacing")) {
+    isPlacing = value.equals("true");
+    Serial.printf("Forced isPlacing to %s\n", isPlacing ? "true" : "false");
+  }
+  else if (variable.equals("posX")) {
+    int32_t steps = mmToSteps(value.toFloat(), STEPS_PER_MM);
+    stepperX->forceStopAndNewPosition(steps);
+    Serial.printf("Forced X position to %.2f mm (%ld steps)\n", value.toFloat(), steps);
+  }
+  else if (variable.equals("posY")) {
+    int32_t steps = mmToSteps(value.toFloat(), STEPS_PER_MM);
+    stepperY->forceStopAndNewPosition(steps);
+    Serial.printf("Forced Y position to %.2f mm (%ld steps)\n", value.toFloat(), steps);
+  }
+  else if (variable.equals("posZ")) {
+    int32_t steps = mmToSteps(value.toFloat(), STEPS_PER_MM);
+    stepperZ->forceStopAndNewPosition(steps);
+    Serial.printf("Forced Z position to %.2f mm (%ld steps)\n", value.toFloat(), steps);
+  }
+  else {
+    Serial.println("Error: Unknown variable for FORCE command.\ncommands: isHomed, isPicking, isPlacing, posX, posY, posZ");
+  }
+  
+  return true;
+}
+
 void loop() {
   if (Serial.available()) {
     String input = Serial.readStringUntil('\n');
     input.trim();  // Remove any whitespace
+    
+    // Check for FORCE command first
+    if (handleForceCommand(input)) {
+      return;
+    }
     
     // Check if homing is needed
     if (!isHomed) {
