@@ -1,5 +1,5 @@
 #include "FastAccelStepper.h"
-//MAX x10y6.5,z7.1
+//MAX x300,y200,z200
 // Create FastAccelStepper engine
 FastAccelStepperEngine engine = FastAccelStepperEngine();
 
@@ -91,66 +91,84 @@ int32_t mmToSteps(float mm, float stepsPerMm) {
   return (int32_t)(mm * STEPS_PER_MM + 0.5f); // Added 0.5 for proper rounding
 }
 
+// Add this helper function to convert steps to mm
+float stepsToMm(int32_t steps) {
+  return (float)steps / STEPS_PER_MM;
+}
+
 // Updated function to parse coordinates
 bool parseCoordinates(String input, float &x, float &y, float &z, int &vacuum) {
   // Remove any whitespace and ensure consistent format
   input.trim();
-  if (!input.endsWith(",")) {
-    input += ",";
+  
+  // Initialize with current positions
+  x = stepsToMm(stepperX->getCurrentPosition());
+  y = stepsToMm(stepperY->getCurrentPosition());
+  z = stepsToMm(stepperZ->getCurrentPosition());
+  vacuum = (isPicking ? 1 : (isPlacing ? 2 : 0));
+  
+  // Split input by commas
+  String parts[4]; // Can handle up to 4 parts (x,y,z,v)
+  int partCount = 0;
+  
+  if (input.indexOf(',') == -1) {
+    // Single command mode
+    parts[0] = input;
+    partCount = 1;
+  } else {
+    // Multiple command mode
+    int startIndex = 0;
+    int commaIndex;
+    while ((commaIndex = input.indexOf(',', startIndex)) != -1 && partCount < 4) {
+      parts[partCount++] = input.substring(startIndex, commaIndex);
+      startIndex = commaIndex + 1;
+    }
+    if (startIndex < input.length() && partCount < 4) {
+      parts[partCount++] = input.substring(startIndex);
+    }
   }
   
-  // Find the coordinate markers
-  int lastX = input.lastIndexOf('x');
-  int lastY = input.lastIndexOf('y');
-  int lastZ = input.lastIndexOf('z');
-  int lastV = input.lastIndexOf('v');
-  
-  if (lastX == -1 || lastY == -1 || lastZ == -1) {
-    Serial.println("Error: Missing coordinate markers");
-    Serial.printf("Current positions - X:%d Y:%d Z:%d\n", 
-      stepperX->getCurrentPosition(),
-      stepperY->getCurrentPosition(),
-      stepperZ->getCurrentPosition());
-
-    return false;
+  // Process each part
+  for (int i = 0; i < partCount; i++) {
+    String part = parts[i];
+    part.trim();
+    if (part.length() == 0) continue;
+    
+    char axis = part.charAt(0);
+    String valueStr = part.substring(1);
+    float value = valueStr.toFloat();
+    
+    // Check if it's a relative movement
+    bool isRelative = false;
+    if (valueStr.charAt(0) == '+' || valueStr.charAt(0) == '-') {
+      isRelative = true;
+    }
+    
+    switch (axis) {
+      case 'x':
+      case 'X':
+        x = isRelative ? x + value : value;
+        break;
+      case 'y':
+      case 'Y':
+        y = isRelative ? y + value : value;
+        break;
+      case 'z':
+      case 'Z':
+        z = isRelative ? z + value : value;
+        break;
+      case 'v':
+      case 'V':
+        vacuum = valueStr.toInt();
+        break;
+      default:
+        Serial.println("Error: Invalid axis identifier");
+        return false;
+    }
   }
-  
-  // Find the end positions
-  int xEnd = input.indexOf('y', lastX);
-  int yEnd = input.indexOf('z', lastY);
-  int zEnd = lastV != -1 ? input.indexOf('v', lastZ) : input.indexOf(',', lastZ);
-  int vEnd = lastV != -1 ? input.indexOf(',', lastV) : -1;
-  
-  if (xEnd == -1 || yEnd == -1 || zEnd == -1) {
-    Serial.println("Error: Invalid coordinate format");
-    Serial.printf("Current positions - X:%d Y:%d Z:%d\n", 
-      stepperX->getCurrentPosition(),
-      stepperY->getCurrentPosition(),
-      stepperZ->getCurrentPosition());
-
-    return false;
-  }
-  
-  // Extract coordinates
-  String xStr = input.substring(lastX + 1, xEnd);
-  String yStr = input.substring(lastY + 1, yEnd);
-  String zStr = input.substring(lastZ + 1, zEnd);
-  String vStr = lastV != -1 ? input.substring(lastV + 1, vEnd) : "0";
-  
-  // Remove any trailing commas
-  xStr.replace(",", "");
-  yStr.replace(",", "");
-  zStr.replace(",", "");
-  vStr.replace(",", "");
-  
-  // Convert to values (already in mm)
-  x = xStr.toFloat();
-  y = yStr.toFloat();
-  z = zStr.toFloat();
-  vacuum = vStr.toInt();
   
   // Debug output in mm
-  Serial.printf("Parsed coordinates (mm) - X: %.3f, Y: %.3f, Z: %.3f\n", x, y, z);
+  Serial.printf("Target coordinates (mm) - X: %.3f, Y: %.3f, Z: %.3f, V: %d\n", x, y, z, vacuum);
   
   return true;
 }
