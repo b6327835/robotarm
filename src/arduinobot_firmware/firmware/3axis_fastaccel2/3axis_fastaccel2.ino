@@ -1,5 +1,9 @@
 #include "FastAccelStepper.h"
+//esp32 3.1.0
+//FastAccelStepper 0.31.4
+
 //MAX x300,y200,z200
+
 // Create FastAccelStepper engine
 FastAccelStepperEngine engine = FastAccelStepperEngine();
 
