@@ -148,7 +148,7 @@ class MoveRobotThread(QThread):
         
         return False
 
-    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=0):
+    def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=2):
         """Execute movement with enhanced error handling and logging."""
         # Format command with 3 decimal precision
         command = f"x{positions[0]:.3f},y{positions[1]:.3f},z{positions[2]:.3f},v{vacuum}"
@@ -187,9 +187,9 @@ class MoveRobotThread(QThread):
                 if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Approaching position"):
                     return
                 # Pick with vacuum on
-                if not self._execute_movement([pnp_x, pnp_y, 0.112], vacuum=0, description="move z"):
+                if not self._execute_movement([pnp_x, pnp_y, 190], vacuum=0, description="move z"):
                     return
-                if not self._execute_movement([pnp_x, pnp_y, 0.112], vacuum=1, description="Picking"):
+                if not self._execute_movement([pnp_x, pnp_y, 190], vacuum=1, description="Picking"):
                     return
                 # Lift with item
                 if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=1, description="Lifting"):
@@ -198,9 +198,9 @@ class MoveRobotThread(QThread):
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
                 # Place with vacuum release
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], vacuum=1, description="move z"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 190], vacuum=1, description="move z"):
                     return
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], vacuum=2, description="Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 190], vacuum=2, description="Placing object"):
                     return
                 # Lift after placing
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
@@ -213,7 +213,7 @@ class MoveRobotThread(QThread):
             def pick():
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching pick position"):
                     return
-                self._execute_movement([self.x, self.y, 0.112], vacuum=1, description="Picking")
+                self._execute_movement([self.x, self.y, 190], vacuum=1, description="Picking")
 
             def home():
                 self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home")
@@ -225,7 +225,7 @@ class MoveRobotThread(QThread):
                 # Pick
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching object"):
                     return
-                if not self._execute_movement([self.x, self.y, 0.112], vacuum=1, description="Picking object"):
+                if not self._execute_movement([self.x, self.y, 190], vacuum=1, description="Picking object"):
                     return
                 # Lift
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=1, description="Lifting object"):
@@ -233,7 +233,7 @@ class MoveRobotThread(QThread):
                 # Move to placement position
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.112], vacuum=2, description="Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 190], vacuum=2, description="Placing object"):
                     return
                 # Lift after placing
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
