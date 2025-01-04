@@ -7,23 +7,19 @@ class GUIInitializer:
         self.stackedWidget.addWidget(self.jogpage)
         self.stackedWidget.addWidget(self.visionpage)
 
-        self.mannualMode.clicked.connect(
-            lambda: self.stackedWidget.setCurrentWidget(self.manpage)
-        )
-        self.jogMode.clicked.connect(
-            lambda: self.stackedWidget.setCurrentWidget(self.jogpage)
-        )
-        self.VSMode.clicked.connect(
-            lambda: self.stackedWidget.setCurrentWidget(self.visionpage)
-        )
+        self.mannualMode.clicked.connect(lambda: self.stackedWidget.setCurrentWidget(self.manpage))
+        self.jogMode.clicked.connect(lambda: self.stackedWidget.setCurrentWidget(self.jogpage))
+        self.VSMode.clicked.connect(lambda: self.stackedWidget.setCurrentWidget(self.visionpage))
+        self.Main_control_button.clicked.connect(lambda: self.stackedWidget.setCurrentWidget(self.controlpage))
+
 
         self.Initial_bottom.clicked.connect(self.INITIAL_SET)
         self.home_bottom.clicked.connect(self.HOME_SET)
         self.start_bottom.clicked.connect(self.START_SET)
 
-        self.horizontalSlider_1.sliderReleased.connect(self.X_SET)
-        self.horizontalSlider_2.sliderReleased.connect(self.Y_SET)
-        self.horizontalSlider_3.sliderReleased.connect(self.Z_SET)
+        self.xpos_slider.sliderReleased.connect(self.X_SET)
+        self.ypos_slider.sliderReleased.connect(self.Y_SET)
+        self.zpos_slider.sliderReleased.connect(self.Z_SET)
 
         self.jogxu.clicked.connect(self.Ux)
         self.jogxd.clicked.connect(self.Dx)

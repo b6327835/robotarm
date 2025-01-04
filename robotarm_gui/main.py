@@ -4,7 +4,7 @@ import time
 app = QtWidgets.QApplication(sys.argv)
 MainWindow = QtWidgets.QMainWindow()
 # from ros_gui import Ui_MainWindow
-from ros_gui_2 import Ui_MainWindow
+from ros_gui_3 import Ui_MainWindow
 from serial import Serial
 from time import sleep, ctime
 from PyQt5.QtGui import QPixmap
