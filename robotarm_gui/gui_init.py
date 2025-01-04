@@ -12,7 +12,6 @@ class GUIInitializer:
         self.VSMode.clicked.connect(lambda: self.stackedWidget.setCurrentWidget(self.visionpage))
         self.Main_control_button.clicked.connect(lambda: self.stackedWidget.setCurrentWidget(self.controlpage))
 
-
         self.Initial_bottom.clicked.connect(self.INITIAL_SET)
         self.home_bottom.clicked.connect(self.HOME_SET)
         self.start_bottom.clicked.connect(self.START_SET)
@@ -39,3 +38,14 @@ class GUIInitializer:
         self.pnp_bt.clicked.connect(self.to_pnp)
         self.home_bt.clicked.connect(self.home)
         self.auto_bt.clicked.connect(self.auto_pnp)
+        
+        #control page
+        self.moveup_btn.clicked.connect(lambda: self.moveL("up"))
+        self.movedown_btn.clicked.connect(lambda: self.moveL("down"))
+        self.moveleft_btn.clicked.connect(lambda: self.moveL("left"))
+        self.moveright_btn.clicked.connect(lambda: self.moveL("right"))
+        self.moveup_left_btn.clicked.connect(lambda: self.moveL("upleft"))
+        self.moveup_right_btn.clicked.connect(lambda: self.moveL("upright"))
+        self.movedown_left_btn.clicked.connect(lambda: self.moveL("downleft"))
+        self.movedown_right_btn.clicked.connect(lambda: self.moveL("downright"))
+
