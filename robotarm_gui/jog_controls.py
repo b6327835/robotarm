@@ -188,17 +188,17 @@ class JogControls:
             print("Set Positions")
 
     def X_SET(self):
-        self.x_vale = self.horizontalSlider_1.value()
+        self.x_vale = self.xpos_slider.value()
         self.X_core_j.setText(str(self.x_vale))
         print(f"X : {self.x_vale}")
 
     def Y_SET(self):
-        self.y_vale = self.horizontalSlider_2.value()
+        self.y_vale = self.ypos_slider.value()
         self.Y_core_j.setText(str(self.y_vale))
         print(f"Y : {self.y_vale}")
 
     def Z_SET(self):
-        self.z_vale = self.horizontalSlider_3.value()
+        self.z_vale = self.zpos_slider.value()
         self.Z_core_j.setText(str(self.z_vale))
         print(f"Z : {self.z_vale}")
 
@@ -240,3 +240,36 @@ class JogControls:
             print(f"Z : -{self.z_def}")
             self.z_def = self.z_post
             self.zp = "2z" + str(self.z_def)
+            
+class MoveLControls:
+    def _slider_to_real(self, slider_value):
+        """Convert slider integer (0-300000) to real position (0-300.000)"""
+        return slider_value * 0.001
+
+    def _real_to_slider(self, real_value):
+        """Convert real position (0-300.000) to slider integer (0-300000)"""
+        return int(real_value * 1000)
+
+    def moveL(self, direction):
+        if direction == "up":
+            current = self.xpos_target_slider.value()
+            increment = self._real_to_slider(self.move_resolution_spinbox.value())
+            self.xpos_target_slider.setValue(current + increment)
+            self.xpos_target_label.setText(f"{self._slider_to_real(self.xpos_target_slider.value()):.3f}")
+            print(f"Move up by {self.move_resolution_spinbox.value():.3f}mm")
+        elif direction == "down":
+            print("Move down")
+        elif direction == "left":
+            print("Move left")
+        elif direction == "right":
+            print("Move right")
+        elif direction == "upleft":
+            print("Move up-left")
+        elif direction == "upright":
+            print("Move up-right")
+        elif direction == "downleft":
+            print("Move down-left")
+        elif direction == "downright":
+            print("Move down-right")
+        else:
+            print("Invalid direction specified")

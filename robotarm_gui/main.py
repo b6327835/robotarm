@@ -19,9 +19,9 @@ from video.video_thread import VideoThread
 import queue
 from auto_pnp_thread import AutoPnPThread
 from gui_init import GUIInitializer
-from jog_controls import JogControls
+from jog_controls import JogControls, MoveLControls
 
-class myclass(Ui_MainWindow, GUIInitializer, JogControls):
+class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
     def __init__(self) -> None:
         super().setupUi(MainWindow)
         self.gnc()
