@@ -91,6 +91,12 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
     def is_operation_running(self):
         return self.is_move_running or self.is_auto_pnp_running
 
+    def update_positions(self, x, y, z):
+        # Update your sliders or other UI components
+        self.xpos_current_slider.setValue(int(x))
+        self.ypos_current_slider.setValue(int(y))
+        self.zpos_current_slider.setValue(int(z))
+
     def start_move_thread(self, mode, dest_x=0.0, dest_y=0.0):
         print(f"move mode: {mode}")
         self.move_mode = mode
@@ -104,6 +110,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                 self.placed_count += 1
             self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode, dest_x=dest_x, dest_y=dest_y)
             self.move_thread.movement_status.connect(self.handle_movement_status)
+            self.move_thread.positions_update.connect(self.update_positions)
             self.move_thread.finished.connect(self.on_move_finished)
             self.is_move_running = True
             self.move_thread.start()

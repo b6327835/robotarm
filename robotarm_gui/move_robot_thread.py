@@ -4,6 +4,7 @@ import time
 
 class MoveRobotThread(QThread):
     movement_status = pyqtSignal(str)  # Signal to update UI with movement status
+    positions_update = pyqtSignal(float, float, float)
 
     def __init__(self, x, y, z, mode, parent=None, dest_x=0.0, dest_y=0.0):
         super().__init__(parent)
@@ -96,6 +97,8 @@ class MoveRobotThread(QThread):
                     if any(response.lower() == valid_resp.lower() for valid_resp in valid_responses):
                         self.movement_status.emit(f"Movement confirmed: {response}")
                         return True
+                    # Parse other responses
+                    self._parse_response(response)
                 time.sleep(0.1)
             except Exception as e:
                 print(f"[SERIAL ERROR] {str(e)}")
@@ -134,6 +137,8 @@ class MoveRobotThread(QThread):
                         self.movement_status.emit(f"Got response: {response}")
                         if response in valid_responses:
                             return True
+                        # Parse other responses
+                        self._parse_response(response)
                     time.sleep(0.1)
                 
                 print("[SERIAL TIMEOUT] No response received")
@@ -168,6 +173,20 @@ class MoveRobotThread(QThread):
         
         self.movement_status.emit(f"Failed to execute movement after {max_attempts} attempts")
         return False
+
+    def _parse_response(self, response):
+        """Parse 'Current positions - X:8 Y:0 Z:7136' and emit signal."""
+        if "Current positions" in response:
+            try:
+                # Example format: "Current positions - X:8 Y:0 Z:7136"
+                parts = response.split("X:")[1].split("Y:")
+                x_val = float(parts[0].strip())
+                parts2 = parts[1].split("Z:")
+                y_val = float(parts2[0].strip())
+                z_val = float(parts2[1].strip())
+                self.positions_update.emit(x_val, y_val, z_val)
+            except:
+                pass
 
     def run(self):
         serial_owned = False
