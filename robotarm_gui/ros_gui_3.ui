@@ -1190,6 +1190,18 @@
         <height>21</height>
        </rect>
       </property>
+      <property name="accelerated">
+       <bool>true</bool>
+      </property>
+      <property name="decimals">
+       <number>3</number>
+      </property>
+      <property name="stepType">
+       <enum>QAbstractSpinBox::AdaptiveDecimalStepType</enum>
+      </property>
+      <property name="value">
+       <double>1.000000000000000</double>
+      </property>
      </widget>
      <widget class="QLabel" name="label_36">
       <property name="geometry">
@@ -1266,7 +1278,7 @@
         </widget>
        </item>
        <item row="0" column="0">
-        <widget class="QPushButton" name="moveup_right_btn">
+        <widget class="QPushButton" name="moveup_left_btn">
          <property name="font">
           <font>
            <pointsize>12</pointsize>
@@ -1281,7 +1293,7 @@
         </widget>
        </item>
        <item row="0" column="2">
-        <widget class="QPushButton" name="moveup_left_btn">
+        <widget class="QPushButton" name="moveup_right_btn">
          <property name="font">
           <font>
            <pointsize>12</pointsize>
@@ -1733,7 +1745,7 @@
        </item>
       </layout>
      </widget>
-     <widget class="QPushButton" name="pushButton">
+     <widget class="QPushButton" name="move_home_btn">
       <property name="geometry">
        <rect>
         <x>30</x>
@@ -1746,7 +1758,7 @@
        <string>HOME</string>
       </property>
      </widget>
-     <widget class="QPushButton" name="pushButton_2">
+     <widget class="QPushButton" name="move_min_btn">
       <property name="geometry">
        <rect>
         <x>30</x>
@@ -1759,7 +1771,7 @@
        <string>MIN</string>
       </property>
      </widget>
-     <widget class="QPushButton" name="pushButton_3">
+     <widget class="QPushButton" name="move_max_btn">
       <property name="geometry">
        <rect>
         <x>30</x>
@@ -1772,7 +1784,7 @@
        <string>MAX</string>
       </property>
      </widget>
-     <widget class="QPushButton" name="pushButton_4">
+     <widget class="QPushButton" name="vac_on_btn">
       <property name="geometry">
        <rect>
         <x>130</x>
@@ -1785,7 +1797,7 @@
        <string>ON</string>
       </property>
      </widget>
-     <widget class="QPushButton" name="pushButton_5">
+     <widget class="QPushButton" name="vac_off_btn">
       <property name="geometry">
        <rect>
         <x>130</x>

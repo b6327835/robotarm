@@ -37,7 +37,8 @@ class GUIInitializer:
         self.pick_target_bt.clicked.connect(self.picktarget)
         self.pnp_bt.clicked.connect(self.to_pnp)
         self.home_bt.clicked.connect(self.home)
-        self.auto_bt.clicked.connect(self.auto_pnp)
+        self.auto_bt.clicked.connect(self.move_to_grid_position)
+
         
         #control page
         self.moveup_btn.clicked.connect(lambda: self.moveL("up"))

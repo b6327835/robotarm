@@ -30,7 +30,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.thread.start()
         self.thread.change_pixmap_signal.connect(self.update_image)
         self.thread.target_signal.connect(self.target_xy)
-        self.thread.grid_start_signal.connect(self.update_grid_start)
+        self.thread.grid_position_signal.connect(self.handle_grid_position)
         self.disply_width = self.Display.width()
         self.display_height = self.Display.height()
 
@@ -58,15 +58,9 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.is_move_running = False
         self.is_auto_pnp_running = False
         self.object_detected = False
-        self.grid_rows = 4
-        self.grid_cols = 3
-        self.cell_size = 0.03
-        self.placed_count = 0
-        self.auto_pnp_thread = None
-        self.grid_start_x = 0.0
-        self.grid_start_y = 0.0
         self.object_queue = queue.Queue()
         self.first_pnp_completed = False
+        self.grid_target = "L1"  # Default grid target
 
     def update_image(self, cv_img):
         qt_img = self.convert_cv_qt(cv_img, 640, 480)
@@ -134,26 +128,6 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
     def home(self):
         self.start_move_thread("home")
         
-    def auto_pnp(self):
-        if not self.is_auto_pnp_running:
-            self.auto_pnp_thread = AutoPnPThread(
-                self.grid_rows,
-                self.grid_cols,
-                self.cell_size,
-                self,
-                self.grid_start_x,
-                self.grid_start_y
-            )
-            self.auto_pnp_thread.finished.connect(self.on_auto_pnp_finished)
-            self.is_auto_pnp_running = True
-            self.auto_pnp_thread.start()
-        else:
-            print("Auto pick-and-place operation is already running, please wait.")
-
-    def on_auto_pnp_finished(self):
-        self.is_auto_pnp_running = False
-        print("Auto pick-and-place completed.")
-
     def on_move_finished(self):
         self.is_move_running = False
         if self.move_mode == "pnp":
@@ -161,11 +135,26 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         print("Move finished. is_move_running set to False.")
         print("All operations finished. You can start again.")
 
-    def update_grid_start(self, x, y):
-        if not self.first_pnp_completed:
-            self.grid_start_x = x
-            self.grid_start_y = y
-            print(f"Updated grid start position to X={x:.3f}, Y={y:.3f}")
+    def handle_grid_position(self, x, y):
+        """Handle grid position signal from video thread"""
+        self.tar_x = x
+        self.tar_y = y
+        self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
+        self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+        self.start_move_thread("move")  # Start movement to target position
+        
+    def move_to_grid_position(self):
+        """Called when auto_bt is clicked"""
+        target_id, ok = QtWidgets.QInputDialog.getText(
+            MainWindow,
+            "Enter Grid Position",
+            "Enter grid position (e.g., L3 or R5):",
+            QtWidgets.QLineEdit.Normal,
+            self.grid_target
+        )
+        if ok and target_id:
+            self.grid_target = target_id
+            self.thread.set_grid_target(target_id)
 
 if __name__ == "__main__":
     myobj = myclass()

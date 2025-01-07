@@ -6,12 +6,12 @@ import pyrealsense2 as rs
 from color_detection import ColorDetector    # Add this import
 import pickle
 import os
+from video.detect_basket import BasketDetector
 
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     target_signal = pyqtSignal(float, float)
-    # Add new signal for grid start position
-    grid_start_signal = pyqtSignal(float, float)
+    grid_position_signal = pyqtSignal(float, float)  # Add new signal
 
     def __init__(self, use_realsense=False, use_calibration=False):    # Add use_calibration parameter
         super().__init__()
@@ -19,7 +19,8 @@ class VideoThread(QThread):
         self.use_realsense = use_realsense
         self.use_calibration = use_calibration  # Add new flag
         self.cap = None
-        self.grid_start_found = False
+        self.current_target_id = None  # Add this line
+        # Remove grid_start_found flag
         
         if self.use_realsense:
             # Initialize RealSense pipeline
@@ -64,17 +65,11 @@ class VideoThread(QThread):
                     self.dist_coeffs = calibration_data['dist_coeffs']
                     print(f"Camera calibration loaded successfully from {calibration_file}")
 
-        # Add red basket detection parameters
-        self.red_params = {
-            'low_h1': 0, 'high_h1': 10,
-            'low_h2': 160, 'high_h2': 180,
-            'low_s': 100, 'high_s': 255,
-            'low_v': 100, 'high_v': 255,
-            'min_area': 500,
-            'kernel_size': 5,
-            'erosion_iter': 1,
-            'dilation_iter': 1
-        }
+        self.basket_detector = BasketDetector()
+
+    def set_grid_target(self, target_id):
+        """Set the target grid position (e.g., 'L3' or 'R5')"""
+        self.current_target_id = target_id
 
     def run(self):
         while True:
@@ -264,30 +259,6 @@ class VideoThread(QThread):
                     # Cross product (negative because coordinate system is flipped)
                     return -(dx * pdy - dy * pdx) > 0
 
-                # Check for marker ID 4 inside the box boundaries
-                if ids is not None:
-                    for i in range(len(ids)):
-                        marker_id = ids[i][0]
-                        if marker_id == 4:
-                            marker_corners = corners[i][0]
-                            center_x = np.mean(marker_corners[:, 0])
-                            center_y = np.mean(marker_corners[:, 1])
-                            
-                            # Check if marker 4 is inside the box
-                            if (x_fixed <= center_x <= x_fixed + box_width and 
-                                y_fixed <= center_y <= y_fixed + box_height):
-                                # Convert to ROS coordinates like target objects
-                                y_relative = (center_y - y_fixed) / box_height
-                                x_relative = (center_x - x_fixed) / box_width
-                                grid_x = (135 - (y_relative * 135)) - 4
-                                grid_y = (145 - (x_relative * 140)) - 0
-                                
-                                if not self.grid_start_found:
-                                    self.grid_start_signal.emit(grid_x * 0.001, grid_y * 0.001)
-                                    cv2.circle(cv_img, (int(center_x), int(center_y)), 5, (255, 255, 0), -1)
-                                    cv2.putText(cv_img, "Grid Start", (int(center_x) + 10, int(center_y) + 10),
-                                              cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-
                 # Color object detection using new ColorDetector
                 blurred = cv2.GaussianBlur(cv_img, (5, 5), 0)
                 hsv_img = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
@@ -323,140 +294,42 @@ class VideoThread(QThread):
                             if circularity > 0.70:
                                 M = cv2.moments(contour)
                                 if M['m00'] > 0:
-                                    target_x = int(M['m10'] / M['m00'])
-                                    target_y = int(M['m01'] / M['m00'])
+                                    # Keep original float precision for center coordinates
+                                    center_x = M['m10'] / M['m00']
+                                    center_y = M['m01'] / M['m00']
                                     
                                     # Check minimum distance from previously detected objects
-                                    if not check_min_distance((target_x, target_y), previous_centers):
+                                    if not check_min_distance((center_x, center_y), previous_centers):
                                         continue
                                     
-                                    previous_centers.append((target_x, target_y))
+                                    previous_centers.append((center_x, center_y))
                                     # Check if object is in bottom rectangle
-                                    in_bottom_rect = (x_fixed <= target_x <= x_fixed + box_width) and (y_fixed <= target_y <= y_fixed + box_height)
+                                    in_bottom_rect = (x_fixed <= center_x <= x_fixed + box_width) and (y_fixed <= center_y <= y_fixed + box_height)
                                     
                                     # Check if object is in top rectangle
                                     top_rect_y_start = corners_ordered[0][1] - gap - rect_height
                                     top_rect_y_end = corners_ordered[0][1] - gap
-                                    in_top_rect = (x_fixed <= target_x <= x_fixed + box_width) and (top_rect_y_start <= target_y <= top_rect_y_end)
+                                    in_top_rect = (x_fixed <= center_x <= x_fixed + box_width) and (top_rect_y_start <= center_y <= top_rect_y_end)
 
                                     if in_bottom_rect:
                                         # Original logic for bottom rectangle
-                                        is_pickable = is_left_side(target_x, target_y)
-                                        object_info = ("Circle", target_x, target_y, is_pickable, "bottom")
+                                        is_pickable = is_left_side(center_x, center_y)
+                                        object_info = ("Circle", center_x, center_y, is_pickable, "bottom")
                                         detected_objects.append(object_info)
                                         if is_pickable:
                                             pickable_objects_bottom.append(object_info)
                                     elif in_top_rect:
                                         # New logic for top rectangle
-                                        is_pickable = is_top_half(target_x, target_y, left_mid_x, left_mid_y, right_mid_x, right_mid_y)
-                                        object_info = ("Circle", target_x, target_y, is_pickable, "top")
+                                        is_pickable = is_top_half(center_x, center_y, left_mid_x, left_mid_y, right_mid_x, right_mid_y)
+                                        object_info = ("Circle", center_x, center_y, is_pickable, "top")
                                         detected_objects.append(object_info)
                                         if is_pickable:
                                             pickable_objects_top.append(object_info)
 
-                # Add red basket detection
-                # Create red mask using two HSV ranges
-                red_mask1 = cv2.inRange(hsv_img, 
-                    np.array([self.red_params['low_h1'], self.red_params['low_s'], self.red_params['low_v']]),
-                    np.array([self.red_params['high_h1'], self.red_params['high_s'], self.red_params['high_v']]))
-
-                red_mask2 = cv2.inRange(hsv_img,
-                    np.array([self.red_params['low_h2'], self.red_params['low_s'], self.red_params['low_v']]),
-                    np.array([self.red_params['high_h2'], self.red_params['high_s'], self.red_params['high_v']]))
-
-                red_mask = cv2.bitwise_or(red_mask1, red_mask2)
-
-                # Apply morphological operations
-                kernel = np.ones((self.red_params['kernel_size'], self.red_params['kernel_size']), np.uint8)
-                red_mask = cv2.erode(red_mask, kernel, iterations=self.red_params['erosion_iter'])
-                red_mask = cv2.dilate(red_mask, kernel, iterations=self.red_params['dilation_iter'])
-
-                # Find red basket contours
-                red_contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                
-                for contour in red_contours:
-                    area = cv2.contourArea(contour)
-                    if area > self.red_params['min_area']:
-                        # Get rotated rectangle
-                        rect = cv2.minAreaRect(contour)
-                        box = cv2.boxPoints(rect)
-                        box = np.int64(box)
-                        
-                        # Get the center, width, height and angle from rect
-                        (center_x, center_y), (width, height), angle = rect
-                        
-                        # Make sure width is the longer side
-                        if width < height:
-                            width, height = height, width
-                            angle += 90
-                        grid_angle = -angle
-                        # Check if basket is in bottom rectangle
-                        if (x_fixed <= center_x <= x_fixed + box_width and 
-                            y_fixed <= center_y <= y_fixed + box_height):
-                            
-                            # Draw yellow contour
-                            cv2.drawContours(cv_img, [box], 0, (0, 255, 255), 2)
-                            
-                            # Define grid parameters
-                            grid_rows = 3
-                            grid_cols = 4
-                            
-                            # Calculate step sizes
-                            step_x = width / grid_cols
-                            step_y = height / grid_rows
-                            
-                            # Calculate the rotation matrix
-                            M = cv2.getRotationMatrix2D((center_x, center_y), grid_angle, 1.0)
-                            
-                            # Function to rotate a point around center
-                            def rotate_point(point, center, matrix):
-                                px = matrix[0][0] * (point[0] - center[0]) + matrix[0][1] * (point[1] - center[1]) + center[0]
-                                py = matrix[1][0] * (point[0] - center[0]) + matrix[1][1] * (point[1] - center[1]) + center[1]
-                                return (int(px), int(py))
-                            
-                            # Draw vertical grid lines
-                            for i in range(grid_cols + 1):
-                                x_offset = (i * step_x) - (width / 2)
-                                start_point = (center_x + x_offset, center_y - height/2)
-                                end_point = (center_x + x_offset, center_y + height/2)
-                                
-                                # Rotate points
-                                start_rotated = rotate_point(start_point, (center_x, center_y), M)
-                                end_rotated = rotate_point(end_point, (center_x, center_y), M)
-                                
-                                cv2.line(cv_img, start_rotated, end_rotated, (0, 255, 255), 1)
-                            
-                            # Draw horizontal grid lines
-                            for i in range(grid_rows + 1):
-                                y_offset = (i * step_y) - (height / 2)
-                                start_point = (center_x - width/2, center_y + y_offset)
-                                end_point = (center_x + width/2, center_y + y_offset)
-                                
-                                # Rotate points
-                                start_rotated = rotate_point(start_point, (center_x, center_y), M)
-                                end_rotated = rotate_point(end_point, (center_x, center_y), M)
-                                
-                                cv2.line(cv_img, start_rotated, end_rotated, (0, 255, 255), 1)
-                            
-                            # Draw red dots at cell centers
-                            for row in range(grid_rows):
-                                for col in range(grid_cols):
-                                    # Calculate cell center
-                                    x_offset = (col * step_x + step_x/2) - (width / 2)
-                                    y_offset = (row * step_y + step_y/2) - (height / 2)
-                                    point = (center_x + x_offset, center_y + y_offset)
-                                    
-                                    # Rotate point
-                                    point_rotated = rotate_point(point, (center_x, center_y), M)
-                                    
-                                    # Draw red dot
-                                    cv2.circle(cv_img, point_rotated, 2, (0, 0, 255), -1)
-                            
-                            # Draw basket information
-                            # cv2.putText(cv_img, "Basket",
-                            #           (int(center_x) - 10, int(center_y) - 15),
-                            #           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
-
+                # Replace single basket detection with multiple baskets
+                basket_infos = self.basket_detector.detect_basket(hsv_img, x_fixed, box_width, box_height, y_fixed)
+                if basket_infos:  # If any baskets were detected
+                    BasketDetector.draw_basket_grid(cv_img, basket_infos)
 
                 # Sort objects by x coordinate separately for each rectangle
                 pickable_objects_bottom.sort(key=lambda obj: obj[1])
@@ -506,63 +379,88 @@ class VideoThread(QThread):
                         tar_x = 0
                     self.target_signal.emit(tar_x, tar_y)
 
-                # Modified drawing code for objects with separate priority counters
-                bottom_priority = 1  # Counter for bottom rectangle
-                top_priority = 1     # Counter for top rectangle
+                # Modified drawing code - only show details for highest priority object
+                first_priority_bottom = None
+                first_priority_top = None
                 
+                # First pass to find highest priority objects
+                for obj in detected_objects:
+                    shape_type, target_x, target_y, is_pickable, rect_location = obj
+                    if is_pickable:
+                        if rect_location == "bottom" and first_priority_bottom is None:
+                            first_priority_bottom = obj
+                        elif rect_location == "top" and first_priority_top is None:
+                            first_priority_top = obj
+
+                # Draw all detected objects
                 for obj in detected_objects:
                     shape_type, target_x, target_y, is_pickable, rect_location = obj
                     color = (0, 255, 0) if is_pickable else (0, 0, 255)
-                    cv2.circle(cv_img, (target_x, target_y), 5, color, -1)
                     
-                    if rect_location == "bottom":
-                        y_rel = (target_y - y_fixed) / box_height
-                        x_rel = (target_x - x_fixed) / box_width
-                        conv_x = 135 - (y_rel * 135)
-                        conv_y = 145 - (x_rel * 140)
-                    else:  # top rectangle
-                        y_rel = (target_y - top_rect_y_start) / rect_height
-                        x_rel = (target_x - x_fixed) / box_width
-                        conv_x = 135 - (y_rel * 135)
-                        conv_y = 145 - (x_rel * 140)
+                    # Convert to integer coordinates for drawing
+                    draw_x = int(target_x)
+                    draw_y = int(target_y)
                     
-                    if is_pickable:
+                    # Draw basic circle for all objects
+                    cv2.circle(cv_img, (draw_x, draw_y), 3, color, -1)
+                    
+                    # Only draw detailed information for first priority objects
+                    if obj == first_priority_bottom or obj == first_priority_top:
                         if rect_location == "bottom":
-                            status_text = f"B{bottom_priority}:Pickable"
-                            bottom_priority += 1
+                            y_rel = (target_y - y_fixed) / box_height
+                            x_rel = (target_x - x_fixed) / box_width
+                            conv_x = 135 - (y_rel * 135)
+                            conv_y = 145 - (x_rel * 140)
                         else:  # top rectangle
-                            status_text = f"T{top_priority}:Pickable"
-                            top_priority += 1
-                    else:
-                        status_text = ""
+                            y_rel = (target_y - top_rect_y_start) / rect_height
+                            x_rel = (target_x - x_fixed) / box_width
+                            conv_x = 135 - (y_rel * 135)
+                            conv_y = 145 - (x_rel * 140)
+                        
+                        status_text = f"{'B' if rect_location == 'bottom' else 'T'}1:Pickable"
 
-                    # Get depth for this object if using RealSense
-                    if self.use_realsense and depth_frame:
-                        depth_value = depth_frame.get_distance(target_x, target_y)
-                        depth_mm = int(depth_value * 1000)
-                        depth_text = f"D:{depth_mm}mm"
-                    else:
-                        depth_text = ""
+                        # Get depth for priority object if using RealSense
+                        if self.use_realsense and depth_frame:
+                            depth_value = depth_frame.get_distance(draw_x, draw_y)
+                            depth_mm = int(depth_value * 1000)
+                            depth_text = f"D:{depth_mm}mm"
+                        else:
+                            depth_text = ""
 
-                    # Draw object information
-                    cv2.putText(
-                        cv_img,
-                        status_text,
-                        (target_x - 10, target_y - 15),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4,
-                        color,
-                        1,
-                    )
-                    cv2.putText(
-                        cv_img,
-                        f"Ros:X{conv_x:.2f},Y{conv_y:.2f} {depth_text}",
-                        (target_x - 10, target_y),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.4,
-                        color,
-                        1,
-                    )
+                        # Draw detailed information only for priority object
+                        # Convert coordinates to integers for putText
+                        cv2.putText(
+                            cv_img,
+                            status_text,
+                            (draw_x - 10, draw_y - 15),  # Using draw_x and draw_y (integers)
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            color,
+                            1,
+                        )
+                        cv2.putText(
+                            cv_img,
+                            f"Ros:X{conv_x:.2f},Y{conv_y:.2f} {depth_text}",
+                            (draw_x - 10, draw_y),  # Using draw_x and draw_y (integers)
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            color,
+                            1,
+                        )
+
+            # After basket detection and drawing, add:
+            if self.current_target_id and basket_infos:
+                grid_pos = self.basket_detector.get_grid_position_by_id(cv_img, basket_infos, self.current_target_id)
+                if grid_pos:
+                    # Convert to robot coordinates (similar to target_xy conversion)
+                    y_relative = (grid_pos[1] - y_fixed) / box_height
+                    x_relative = (grid_pos[0] - x_fixed) / box_width
+                    tar_x = (135 - (y_relative * 135))-(4)
+                    tar_y = (145 - (x_relative * 140))-(0)
+                    if tar_x < 0:
+                        tar_x = 0
+                    self.grid_position_signal.emit(tar_x, tar_y)
+                    self.current_target_id = None  # Reset after emitting
 
             self.change_pixmap_signal.emit(cv_img)
 

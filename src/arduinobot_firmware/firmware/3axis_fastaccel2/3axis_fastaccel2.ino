@@ -31,7 +31,7 @@ const int32_t HOMING_STEPS = 10000;
 const uint32_t HOMING_TIMEOUT = 10000;  // 10 seconds timeout
 
 // Add homing state variable
-bool isHomed = false;
+bool isHomed = true;
 const int32_t HOMING_SPEED = 20000;   // Reduced from 20000 for more precise stopping
 const int32_t HOMING_ACCEL = 90000;  // Reduced for gentler movement
 const int32_t BACKOFF_STEPS = 0;      // Steps to back off after hitting limit
@@ -217,7 +217,7 @@ void moveToPosition(float x, float y, float z, int vacuum) {
   
   // Monitor movement with debug output
   while (stepperX->isRunning() || stepperY->isRunning() || stepperZ->isRunning()) {
-    Serial.printf("Current positions - X:%d Y:%d Z:%d\n", 
+    Serial.printf("Current_positions - X:%d Y:%d Z:%d\n", 
                  stepperX->getCurrentPosition(),
                  stepperY->getCurrentPosition(),
                  stepperZ->getCurrentPosition());
