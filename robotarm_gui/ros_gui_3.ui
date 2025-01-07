@@ -30,7 +30,7 @@
      <string notr="true">background-color: rgb(255, 170, 127);</string>
     </property>
     <property name="currentIndex">
-     <number>3</number>
+     <number>1</number>
     </property>
     <widget class="QWidget" name="manpage">
      <widget class="QSlider" name="ypos_slider">
@@ -492,8 +492,8 @@
      <widget class="QPushButton" name="home_bt">
       <property name="geometry">
        <rect>
-        <x>670</x>
-        <y>430</y>
+        <x>680</x>
+        <y>340</y>
         <width>151</width>
         <height>61</height>
        </rect>
@@ -513,8 +513,8 @@
      <widget class="QPushButton" name="Gopoint">
       <property name="geometry">
        <rect>
-        <x>670</x>
-        <y>250</y>
+        <x>680</x>
+        <y>160</y>
         <width>151</width>
         <height>61</height>
        </rect>
@@ -534,8 +534,8 @@
      <widget class="QPushButton" name="pnp_bt">
       <property name="geometry">
        <rect>
-        <x>670</x>
-        <y>370</y>
+        <x>680</x>
+        <y>280</y>
         <width>151</width>
         <height>61</height>
        </rect>
@@ -664,8 +664,8 @@
      <widget class="QPushButton" name="pick_target_bt">
       <property name="geometry">
        <rect>
-        <x>670</x>
-        <y>310</y>
+        <x>680</x>
+        <y>220</y>
         <width>151</width>
         <height>61</height>
        </rect>
@@ -729,14 +729,27 @@
      <widget class="QPushButton" name="auto_bt">
       <property name="geometry">
        <rect>
-        <x>670</x>
-        <y>500</y>
+        <x>680</x>
+        <y>450</y>
         <width>151</width>
         <height>25</height>
        </rect>
       </property>
       <property name="text">
-       <string>Automatic(test)</string>
+       <string>Auto(WIP)</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="moveto_bt">
+      <property name="geometry">
+       <rect>
+        <x>680</x>
+        <y>420</y>
+        <width>151</width>
+        <height>25</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>MoveTo</string>
       </property>
      </widget>
     </widget>
