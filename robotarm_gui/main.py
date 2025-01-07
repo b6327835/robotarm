@@ -9,6 +9,7 @@ from serial import Serial
 from time import sleep, ctime
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QLabel
 
 import cv2
 import numpy as np
@@ -20,6 +21,59 @@ import queue
 from auto_pnp_thread import AutoPnPThread
 from gui_init import GUIInitializer
 from jog_controls import JogControls, MoveLControls
+
+class PositionSelectorDialog(QDialog):
+    def __init__(self, positions, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Position")
+        self.setModal(True)
+        
+        layout = QVBoxLayout()
+        
+        # Source (Objects) list
+        if positions['objects']:
+            layout.addWidget(QLabel("Select Source Object:"))
+            self.objects_list = QListWidget()
+            t_count = 1
+            b_count = 1
+            for x, y in positions['objects']:
+                if y < 240:
+                    label = f"T{t_count}"
+                    t_count += 1
+                else:
+                    label = f"B{b_count}"
+                    b_count += 1
+                self.objects_list.addItem(f"{label}: ({x:.2f}, {y:.2f})")
+            layout.addWidget(self.objects_list)
+        
+        # Destination (Grid) list
+        if positions['grid']:
+            layout.addWidget(QLabel("Select Destination Grid:"))
+            self.grid_list = QListWidget()
+            for grid_id, (x, y) in positions['grid'].items():
+                self.grid_list.addItem(f"{grid_id}: ({x:.2f}, {y:.2f})")
+            layout.addWidget(self.grid_list)
+        
+        self.select_btn = QPushButton("Select")
+        self.select_btn.clicked.connect(self.accept)
+        layout.addWidget(self.select_btn)
+        
+        self.setLayout(layout)
+    
+    def get_selected_positions(self):
+        source = None
+        destination = None
+        
+        if hasattr(self, 'objects_list') and self.objects_list.currentItem():
+            idx = self.objects_list.currentRow()
+            source = ('object', idx)
+            
+        if hasattr(self, 'grid_list') and self.grid_list.currentItem():
+            text = self.grid_list.currentItem().text()
+            grid_id = text.split(':')[0].strip()
+            destination = ('grid', grid_id)
+            
+        return source, destination
 
 class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
     def __init__(self) -> None:
@@ -62,6 +116,33 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.first_pnp_completed = False
         self.grid_target = "L1"  # Default grid target
 
+        self.available_positions = {
+            'objects': [],
+            'grid': {}
+        }
+        self.thread.available_positions_signal.connect(self.update_available_positions)
+
+        # Add grid initialization
+        self.grid_cols = 4  # Number of columns in the grid
+        self.grid_rows = 3  # Number of rows in the grid
+        self.placed_count = 0  # Counter for placed objects
+        self.grid_start_x = 0.0  # Starting X coordinate for grid
+        self.grid_start_y = 0.0  # Starting Y coordinate for grid
+        self.cell_size = 0.02  # Size of each grid cell in meters
+
+        self.available_positions = {
+            'objects': [],
+            'grid': {}
+        }
+
+        self.workspace_bounds = {
+            'x_fixed': 0,
+            'y_fixed': 0,
+            'box_width': 0,
+            'box_height': 0
+        }
+        self.thread.workspace_bounds_signal.connect(self.update_workspace_bounds)
+
     def update_image(self, cv_img):
         qt_img = self.convert_cv_qt(cv_img, 640, 480)
         self.Display.setPixmap(qt_img)
@@ -91,17 +172,22 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.ypos_current_slider.setValue(int(y))
         self.zpos_current_slider.setValue(int(z))
 
-    def start_move_thread(self, mode, dest_x=0.0, dest_y=0.0):
+    def start_move_thread(self, mode, dest_x=0.0, dest_y=0.0, dest_id=None):
         print(f"move mode: {mode}")
         self.move_mode = mode
         if not self.is_move_running:
             print(f"Starting {mode} with X={self.tar_x * 0.001}, Y={self.tar_y * 0.001}, Z={self.tar_z * 0.001}")
-            if mode == "pnp":
-                row = self.placed_count // self.grid_cols
-                col = self.placed_count % self.grid_cols
-                dest_x = self.grid_start_x + col * self.cell_size
-                dest_y = self.grid_start_y + row * self.cell_size
-                self.placed_count += 1
+            if mode == "pnp" and dest_id:
+                # Get grid coordinates from available_positions
+                dest_x, dest_y = self.available_positions['grid'][dest_id]
+                # Convert to robot coordinates using stored workspace bounds
+                y_relative = (dest_y - self.workspace_bounds['y_fixed']) / self.workspace_bounds['box_height']
+                x_relative = (dest_x - self.workspace_bounds['x_fixed']) / self.workspace_bounds['box_width']
+                dest_x = (135 - (y_relative * 135)) - 4
+                dest_y = (145 - (x_relative * 140)) - 0
+                if dest_x < 0:
+                    dest_x = 0
+            
             self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode, dest_x=dest_x, dest_y=dest_y)
             self.move_thread.movement_status.connect(self.handle_movement_status)
             self.move_thread.positions_update.connect(self.update_positions)
@@ -155,6 +241,46 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         if ok and target_id:
             self.grid_target = target_id
             self.thread.set_grid_target(target_id)
+
+    def update_available_positions(self, positions):
+        self.available_positions = positions
+
+    def update_workspace_bounds(self, x_fixed, y_fixed, box_width, box_height):
+        self.workspace_bounds = {
+            'x_fixed': x_fixed,
+            'y_fixed': y_fixed,
+            'box_width': box_width,
+            'box_height': box_height
+        }
+
+    def show_position_selector(self):
+        dialog = PositionSelectorDialog(self.available_positions, MainWindow)
+        if dialog.exec_() == QDialog.Accepted:
+            source, destination = dialog.get_selected_positions()
+            if source and destination:
+                # Handle source (object to pick)
+                if source[0] == 'object':
+                    x, y = self.available_positions['objects'][source[1]]
+                    self.tar_x = x
+                    self.tar_y = y
+                    self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
+                    self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                    
+                    # Store destination grid position and start PnP
+                    if destination[0] == 'grid':
+                        self.grid_target = destination[1]
+                        # Pass destination ID to start_move_thread
+                        self.start_move_thread("pnp", dest_id=destination[1])
+            elif source:  # Only object selected
+                x, y = self.available_positions['objects'][source[1]]
+                self.tar_x = x
+                self.tar_y = y
+                self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
+                self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                self.start_move_thread("move")
+            elif destination:  # Only grid selected
+                self.grid_target = destination[1]
+                self.thread.set_grid_target(destination[1])
 
 if __name__ == "__main__":
     myobj = myclass()

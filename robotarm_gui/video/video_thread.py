@@ -12,6 +12,8 @@ class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     target_signal = pyqtSignal(float, float)
     grid_position_signal = pyqtSignal(float, float)  # Add new signal
+    available_positions_signal = pyqtSignal(dict)  # Add this signal
+    workspace_bounds_signal = pyqtSignal(float, float, float, float)  # Add this signal for x_fixed, y_fixed, box_width, box_height
 
     def __init__(self, use_realsense=False, use_calibration=False):    # Add use_calibration parameter
         super().__init__()
@@ -20,6 +22,16 @@ class VideoThread(QThread):
         self.use_calibration = use_calibration  # Add new flag
         self.cap = None
         self.current_target_id = None  # Add this line
+        self.available_positions = {
+            'objects': [],  # List of (x, y) tuples
+            'grid': {}      # Dict of grid_id: (x, y) positions
+        }
+        self.workspace_bounds = {
+            'x_fixed': 0,
+            'y_fixed': 0,
+            'box_width': 0,
+            'box_height': 0
+        }
         # Remove grid_start_found flag
         
         if self.use_realsense:
@@ -236,6 +248,15 @@ class VideoThread(QThread):
                 y_fixed = min(y_coords)
                 box_width = max(x_coords) - x_fixed
                 box_height = max(y_coords) - y_fixed
+
+                # Store and emit workspace bounds
+                self.workspace_bounds = {
+                    'x_fixed': x_fixed,
+                    'y_fixed': y_fixed,
+                    'box_width': box_width,
+                    'box_height': box_height
+                }
+                self.workspace_bounds_signal.emit(x_fixed, y_fixed, box_width, box_height)
 
                 # Function to check if a point is on the left side of the split line
                 def is_left_side(px, py):
@@ -461,6 +482,29 @@ class VideoThread(QThread):
                         tar_x = 0
                     self.grid_position_signal.emit(tar_x, tar_y)
                     self.current_target_id = None  # Reset after emitting
+
+            # After detecting objects, update available positions
+            self.available_positions['objects'] = []
+            for obj in detected_objects:
+                if obj[3]:  # if is_pickable
+                    self.available_positions['objects'].append((obj[1], obj[2]))  # x, y coordinates
+
+            # After basket detection
+            if basket_infos:
+                grid_positions = {}
+                for basket_info in basket_infos:
+                    # Get all grid positions from the basket
+                    for row in range(basket_info['grid_params']['rows']):
+                        for col in range(basket_info['grid_params']['cols']):
+                            grid_id = f"{'L' if basket_info['center'][0] < cv_img.shape[1]/2 else 'R'}{row*basket_info['grid_params']['cols'] + col + 1}"
+                            pos = self.basket_detector.get_grid_position_by_id(cv_img, [basket_info], grid_id)
+                            if pos:
+                                grid_positions[grid_id] = pos
+
+                self.available_positions['grid'] = grid_positions
+                
+            # Emit updated positions
+            self.available_positions_signal.emit(self.available_positions)
 
             self.change_pixmap_signal.emit(cv_img)
 
