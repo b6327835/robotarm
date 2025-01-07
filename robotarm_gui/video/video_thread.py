@@ -13,7 +13,7 @@ class VideoThread(QThread):
     # Add new signal for grid start position
     grid_start_signal = pyqtSignal(float, float)
 
-    def __init__(self, use_realsense=True, use_calibration=False):    # Add use_calibration parameter
+    def __init__(self, use_realsense=False, use_calibration=False):    # Add use_calibration parameter
         super().__init__()
         self.detect_mode = "black"
         self.use_realsense = use_realsense
@@ -64,6 +64,18 @@ class VideoThread(QThread):
                     self.dist_coeffs = calibration_data['dist_coeffs']
                     print(f"Camera calibration loaded successfully from {calibration_file}")
 
+        # Add red basket detection parameters
+        self.red_params = {
+            'low_h1': 0, 'high_h1': 10,
+            'low_h2': 160, 'high_h2': 180,
+            'low_s': 100, 'high_s': 255,
+            'low_v': 100, 'high_v': 255,
+            'min_area': 500,
+            'kernel_size': 5,
+            'erosion_iter': 1,
+            'dilation_iter': 1
+        }
+
     def run(self):
         while True:
             if self.use_realsense:
@@ -92,6 +104,7 @@ class VideoThread(QThread):
                 cv_img = cv2.undistort(cv_img, self.camera_matrix, self.dist_coeffs)
 
             cv_img = cv2.resize(cv_img, (640, 480))
+            cv_img = cv2.imread("test\workspace_test_01.png")
             
             # Fix marker detection
             corners, ids, _ = self.aruco_detector.detector.detectMarkers(cv_img)
@@ -164,7 +177,7 @@ class VideoThread(QThread):
                 rect_height = max(corners_ordered[2][1], corners_ordered[3][1]) - min(corners_ordered[0][1], corners_ordered[1][1])
                 
                 # Calculate extension points with actual gap
-                gap = 10  # 200-pixel gap
+                gap = 50  # 50-pixel gap
                 # First draw the original bottom rectangle
                 bottom_corners = [
                     corners_ordered[0],  # Original top-left
@@ -340,6 +353,110 @@ class VideoThread(QThread):
                                         detected_objects.append(object_info)
                                         if is_pickable:
                                             pickable_objects_top.append(object_info)
+
+                # Add red basket detection
+                # Create red mask using two HSV ranges
+                red_mask1 = cv2.inRange(hsv_img, 
+                    np.array([self.red_params['low_h1'], self.red_params['low_s'], self.red_params['low_v']]),
+                    np.array([self.red_params['high_h1'], self.red_params['high_s'], self.red_params['high_v']]))
+
+                red_mask2 = cv2.inRange(hsv_img,
+                    np.array([self.red_params['low_h2'], self.red_params['low_s'], self.red_params['low_v']]),
+                    np.array([self.red_params['high_h2'], self.red_params['high_s'], self.red_params['high_v']]))
+
+                red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+
+                # Apply morphological operations
+                kernel = np.ones((self.red_params['kernel_size'], self.red_params['kernel_size']), np.uint8)
+                red_mask = cv2.erode(red_mask, kernel, iterations=self.red_params['erosion_iter'])
+                red_mask = cv2.dilate(red_mask, kernel, iterations=self.red_params['dilation_iter'])
+
+                # Find red basket contours
+                red_contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                for contour in red_contours:
+                    area = cv2.contourArea(contour)
+                    if area > self.red_params['min_area']:
+                        # Get rotated rectangle
+                        rect = cv2.minAreaRect(contour)
+                        box = cv2.boxPoints(rect)
+                        box = np.int64(box)
+                        
+                        # Get the center, width, height and angle from rect
+                        (center_x, center_y), (width, height), angle = rect
+                        
+                        # Make sure width is the longer side
+                        if width < height:
+                            width, height = height, width
+                            angle += 90
+                        grid_angle = -angle
+                        # Check if basket is in bottom rectangle
+                        if (x_fixed <= center_x <= x_fixed + box_width and 
+                            y_fixed <= center_y <= y_fixed + box_height):
+                            
+                            # Draw yellow contour
+                            cv2.drawContours(cv_img, [box], 0, (0, 255, 255), 2)
+                            
+                            # Define grid parameters
+                            grid_rows = 3
+                            grid_cols = 4
+                            
+                            # Calculate step sizes
+                            step_x = width / grid_cols
+                            step_y = height / grid_rows
+                            
+                            # Calculate the rotation matrix
+                            M = cv2.getRotationMatrix2D((center_x, center_y), grid_angle, 1.0)
+                            
+                            # Function to rotate a point around center
+                            def rotate_point(point, center, matrix):
+                                px = matrix[0][0] * (point[0] - center[0]) + matrix[0][1] * (point[1] - center[1]) + center[0]
+                                py = matrix[1][0] * (point[0] - center[0]) + matrix[1][1] * (point[1] - center[1]) + center[1]
+                                return (int(px), int(py))
+                            
+                            # Draw vertical grid lines
+                            for i in range(grid_cols + 1):
+                                x_offset = (i * step_x) - (width / 2)
+                                start_point = (center_x + x_offset, center_y - height/2)
+                                end_point = (center_x + x_offset, center_y + height/2)
+                                
+                                # Rotate points
+                                start_rotated = rotate_point(start_point, (center_x, center_y), M)
+                                end_rotated = rotate_point(end_point, (center_x, center_y), M)
+                                
+                                cv2.line(cv_img, start_rotated, end_rotated, (0, 255, 255), 1)
+                            
+                            # Draw horizontal grid lines
+                            for i in range(grid_rows + 1):
+                                y_offset = (i * step_y) - (height / 2)
+                                start_point = (center_x - width/2, center_y + y_offset)
+                                end_point = (center_x + width/2, center_y + y_offset)
+                                
+                                # Rotate points
+                                start_rotated = rotate_point(start_point, (center_x, center_y), M)
+                                end_rotated = rotate_point(end_point, (center_x, center_y), M)
+                                
+                                cv2.line(cv_img, start_rotated, end_rotated, (0, 255, 255), 1)
+                            
+                            # Draw red dots at cell centers
+                            for row in range(grid_rows):
+                                for col in range(grid_cols):
+                                    # Calculate cell center
+                                    x_offset = (col * step_x + step_x/2) - (width / 2)
+                                    y_offset = (row * step_y + step_y/2) - (height / 2)
+                                    point = (center_x + x_offset, center_y + y_offset)
+                                    
+                                    # Rotate point
+                                    point_rotated = rotate_point(point, (center_x, center_y), M)
+                                    
+                                    # Draw red dot
+                                    cv2.circle(cv_img, point_rotated, 2, (0, 0, 255), -1)
+                            
+                            # Draw basket information
+                            # cv2.putText(cv_img, "Basket",
+                            #           (int(center_x) - 10, int(center_y) - 15),
+                            #           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
+
 
                 # Sort objects by x coordinate separately for each rectangle
                 pickable_objects_bottom.sort(key=lambda obj: obj[1])
