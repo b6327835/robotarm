@@ -13,7 +13,7 @@ def nothing(x):
 
 def main():
     # Camera type flag
-    use_realsense = True  # Set to False for normal webcam
+    use_realsense = False  # Set to False for normal webcam
 
     # Initialize camera
     if use_realsense:
@@ -65,7 +65,7 @@ def main():
         focus = cv2.getTrackbarPos('Focus', 'Settings')
         if not use_realsense:
             cap.set(cv2.CAP_PROP_FOCUS, focus)
-        
+        frame = cv2.imread('test/workspace_test_01.png')
         # Process objects with detectors
         red_result, red_mask, red_objects = red_detector.detect(frame, depth_image if use_realsense else None, use_realsense)
         black_result, black_mask, black_objects = black_detector.detect(frame, depth_image if use_realsense else None, use_realsense)
