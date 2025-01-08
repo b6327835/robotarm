@@ -273,3 +273,8 @@ class MoveLControls:
             print("Move down-right")
         else:
             print("Invalid direction specified")
+            
+    def update_current_position(self):
+        self.xpos_current_label.setText(f"{self._slider_to_real(self.xpos_current_slider.value()):.3f}")
+        self.ypos_current_label.setText(f"{self._slider_to_real(self.ypos_current_slider.value()):.3f}")
+        self.zpos_current_label.setText(f"{self._slider_to_real(self.zpos_current_slider.value()):.3f}")

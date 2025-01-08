@@ -49,4 +49,8 @@ class GUIInitializer:
         self.moveup_right_btn.clicked.connect(lambda: self.moveL("upright"))
         self.movedown_left_btn.clicked.connect(lambda: self.moveL("downleft"))
         self.movedown_right_btn.clicked.connect(lambda: self.moveL("downright"))
+        
+        self.xpos_current_slider.valueChanged.connect(self.update_current_position)
+        self.ypos_current_slider.valueChanged.connect(self.update_current_position)
+        self.zpos_current_slider.valueChanged.connect(self.update_current_position)
 
