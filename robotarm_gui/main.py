@@ -146,6 +146,11 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         }
         self.thread.workspace_bounds_signal.connect(self.update_workspace_bounds)
 
+        self.is_auto_mode = False
+        self.auto_check_timer = QtCore.QTimer()
+        self.auto_check_timer.timeout.connect(self.auto_pick_and_place)
+        self.auto_check_timer.setInterval(10000)  # 10 seconds
+
     def update_image(self, cv_img):
         qt_img = self.convert_cv_qt(cv_img, 640, 480)
         self.Display.setPixmap(qt_img)
@@ -223,6 +228,9 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             self.first_pnp_completed = True
         print("Move finished. is_move_running set to False.")
         print("All operations finished. You can start again.")
+        if self.is_auto_mode:
+            # Schedule next pick and place operation
+            QtCore.QTimer.singleShot(1000, self.auto_pick_and_place)
 
     def handle_grid_position(self, x, y):
         """Handle grid position signal from video thread"""
@@ -234,16 +242,85 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         
     def move_to_grid_position(self):
         """Called when auto_bt is clicked"""
-        target_id, ok = QtWidgets.QInputDialog.getText(
-            MainWindow,
-            "Enter Grid Position",
-            "Enter grid position (e.g., L3 or R5):",
-            QtWidgets.QLineEdit.Normal,
-            self.grid_target
-        )
-        if ok and target_id:
-            self.grid_target = target_id
-            self.thread.set_grid_target(target_id)
+        if not self.is_auto_mode:
+            # Start auto mode
+            self.is_auto_mode = True
+            self.auto_bt.setText("Stop Auto")
+            self.auto_check_timer.start()
+            self.auto_pick_and_place()  # Start immediately
+        else:
+            # Stop auto mode
+            self.is_auto_mode = False
+            self.auto_bt.setText("Auto")
+            self.auto_check_timer.stop()
+
+    def get_first_available_cell(self):
+        """Get the first available cell in the right side"""
+        for i in range(1, 13):  # Total 12 cells (3x4)
+            cell_id = f"R{i}"
+            if cell_id in self.available_positions['grid']:
+                return cell_id
+        return None
+
+    def calculate_middle_placement(self):
+        """Calculate coordinates for middle of bottom-half of top rectangle"""
+        if not self.workspace_bounds:
+            return None
+        
+        x_fixed = self.workspace_bounds['x_fixed']
+        y_fixed = self.workspace_bounds['y_fixed']
+        box_width = self.workspace_bounds['box_width']
+        
+        # Calculate center X and Y for placement
+        center_x = x_fixed + (box_width / 2)
+        # Y coordinate for bottom half of top rectangle (50 is the gap)
+        center_y = y_fixed - 50 - (box_width / 4)
+        
+        return center_x, center_y
+
+    def auto_pick_and_place(self):
+        """Auto pick and place logic"""
+        if not self.is_auto_mode or self.is_move_running:
+            return
+
+        # Check for T objects first
+        t_objects = [(i, pos) for i, pos in enumerate(self.available_positions['objects']) 
+                    if pos[1] < 240]  # Y < 240 means top rectangle
+        
+        # Then check for B objects
+        b_objects = [(i, pos) for i, pos in enumerate(self.available_positions['objects']) 
+                    if pos[1] >= 240]  # Y >= 240 means bottom rectangle
+
+        if t_objects:
+            # Pick T object and place in available R cell
+            obj_idx, (x, y) = t_objects[0]
+            available_cell = self.get_first_available_cell()
+            
+            if available_cell:
+                self.tar_x = x
+                self.tar_y = y
+                self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
+                self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                self.start_move_thread("pnp", dest_id=available_cell)
+                
+        elif b_objects:
+            # Pick B object and place in middle of top rectangle
+            obj_idx, (x, y) = b_objects[0]
+            middle_coords = self.calculate_middle_placement()
+            
+            if middle_coords:
+                self.tar_x = x
+                self.tar_y = y
+                self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
+                self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                # Convert middle coordinates to robot coordinates
+                y_relative = (middle_coords[1] - self.workspace_bounds['y_fixed']) / self.workspace_bounds['box_height']
+                x_relative = (middle_coords[0] - self.workspace_bounds['x_fixed']) / self.workspace_bounds['box_width']
+                dest_x = (135 - (y_relative * 135)) - 4
+                dest_y = (145 - (x_relative * 140)) - 0
+                if dest_x < 0:
+                    dest_x = 0
+                self.start_move_thread("pnp", dest_x=dest_x, dest_y=dest_y)
 
     def update_available_positions(self, positions):
         self.available_positions = positions
