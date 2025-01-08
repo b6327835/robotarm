@@ -14,6 +14,7 @@ class BasketDetector:
             'erosion_iter': 1,
             'dilation_iter': 1
         }
+        self.occupied_cells = {}  # Track occupied grid cells
 
     def detect_basket(self, hsv_img, x_fixed, box_width, box_height, y_fixed):
         # Create red mask using two HSV ranges
@@ -70,7 +71,18 @@ class BasketDetector:
         return basket_infos  # Return list of all baskets
 
     @staticmethod
-    def draw_basket_grid(img, basket_infos):
+    def check_cell_occupied(point, detected_objects, threshold=10):
+        """Check if a grid cell contains any detected object"""
+        if not detected_objects:
+            return False
+        for obj_x, obj_y in detected_objects:
+            distance = np.sqrt((point[0] - obj_x)**2 + (point[1] - obj_y)**2)
+            if distance < threshold:
+                return True
+        return False
+
+    @staticmethod
+    def draw_basket_grid(img, basket_infos, detected_objects=[]):
         # Handle single basket info being passed (backward compatibility)
         if not isinstance(basket_infos, list):
             basket_infos = [basket_infos]
@@ -96,6 +108,8 @@ class BasketDetector:
         # Counter for dots on each side
         left_counter = 1
         right_counter = 1
+
+        grid_positions = {}  # Add this at the start of the method
 
         # Process left baskets
         for basket_info in left_baskets:
@@ -153,12 +167,15 @@ class BasketDetector:
                     py = M[1][0] * (point[0] - center_x) + M[1][1] * (point[1] - center_y) + center_y
                     point_rotated = (int(px), int(py))
                     
-                    # Draw red dot
+                    # Always use red for left side (no occupation check needed)
                     cv2.circle(img, point_rotated, 2, (0, 0, 255), -1)
-                    # Add number label
-                    cv2.putText(img, f"L{left_counter}", 
+                    label = f"L{left_counter}"
+                    cv2.putText(img, label, 
                               (point_rotated[0] + 5, point_rotated[1] + 5),
                               cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+                    
+                    # Add to grid positions
+                    grid_positions[f"L{left_counter}"] = (px, py)
                     left_counter += 1
 
         # Process right baskets
@@ -211,15 +228,35 @@ class BasketDetector:
                     # Rotate point
                     px = M[0][0] * (point[0] - center_x) + M[0][1] * (point[1] - center_y) + center_x
                     py = M[1][0] * (point[0] - center_x) + M[1][1] * (point[1] - center_y) + center_y
-                    point_rotated = (int(px), int(py))
                     
-                    # Draw red dot
-                    cv2.circle(img, point_rotated, 2, (0, 0, 255), -1)
-                    # Add number label
-                    cv2.putText(img, f"R{right_counter}", 
+                    # Before drawing grid points, check if cell is occupied
+                    point_rotated = (int(px), int(py))
+                    is_occupied = False
+                    
+                    # Check if this cell contains a detected object
+                    is_occupied = BasketDetector.check_cell_occupied(
+                        point_rotated, 
+                        detected_objects,
+                        threshold=10
+                    )
+                    
+                    # Draw dot and label with different color based on occupation
+                    color = (255, 0, 0) if is_occupied else (0, 0, 255)  # Blue if occupied, red if free
+                    cv2.circle(img, point_rotated, 2, color, -1)
+                    label = f"R{right_counter}"
+                    cv2.putText(img, label, 
                               (point_rotated[0] + 5, point_rotated[1] + 5),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 1)
+                    
+                    # Add position to grid_positions with occupation status
+                    if is_occupied:
+                        grid_positions[f"occupied_R{right_counter}"] = (px, py)
+                    else:
+                        grid_positions[f"R{right_counter}"] = (px, py)
+                    
                     right_counter += 1
+
+        return grid_positions  # Return the grid positions dictionary
 
     def get_grid_position_by_id(self, img, basket_infos, target_id):
         """Get the coordinates of a specific grid position by its ID (e.g., 'L3' or 'R5')"""

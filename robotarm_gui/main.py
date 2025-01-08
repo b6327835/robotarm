@@ -50,8 +50,11 @@ class PositionSelectorDialog(QDialog):
         if positions['grid']:
             layout.addWidget(QLabel("Select Destination Grid:"))
             self.grid_list = QListWidget()
+            # Only show unoccupied grid positions
             for grid_id, (x, y) in positions['grid'].items():
-                self.grid_list.addItem(f"{grid_id}: ({x:.2f}, {y:.2f})")
+                # Skip any positions marked as occupied
+                if not grid_id.startswith('occupied_'):
+                    self.grid_list.addItem(f"{grid_id}: ({x:.2f}, {y:.2f})")
             layout.addWidget(self.grid_list)
         
         self.select_btn = QPushButton("Select")

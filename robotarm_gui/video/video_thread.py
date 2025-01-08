@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from aruco_markers_detect import ArucoMarkerPosition
 import pyrealsense2 as rs
-from color_detection import ColorDetector    # Add this import
+from color_detection import ColorDetector
 import pickle
 import os
 from video.detect_basket import BasketDetector
@@ -11,20 +11,20 @@ from video.detect_basket import BasketDetector
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
     target_signal = pyqtSignal(float, float)
-    grid_position_signal = pyqtSignal(float, float)  # Add new signal
-    available_positions_signal = pyqtSignal(dict)  # Add this signal
-    workspace_bounds_signal = pyqtSignal(float, float, float, float)  # Add this signal for x_fixed, y_fixed, box_width, box_height
+    grid_position_signal = pyqtSignal(float, float)
+    available_positions_signal = pyqtSignal(dict)
+    workspace_bounds_signal = pyqtSignal(float, float, float, float)
 
-    def __init__(self, use_realsense=False, use_calibration=False):    # Add use_calibration parameter
+    def __init__(self, use_realsense=False, use_calibration=False):
         super().__init__()
         self.detect_mode = "black"
         self.use_realsense = use_realsense
-        self.use_calibration = use_calibration  # Add new flag
+        self.use_calibration = use_calibration
         self.cap = None
-        self.current_target_id = None  # Add this line
+        self.current_target_id = None
         self.available_positions = {
-            'objects': [],  # List of (x, y) tuples
-            'grid': {}      # Dict of grid_id: (x, y) positions
+            'objects': [],
+            'grid': {}
         }
         self.workspace_bounds = {
             'x_fixed': 0,
@@ -32,7 +32,6 @@ class VideoThread(QThread):
             'box_width': 0,
             'box_height': 0
         }
-        # Remove grid_start_found flag
         
         if self.use_realsense:
             # Initialize RealSense pipeline
@@ -44,7 +43,7 @@ class VideoThread(QThread):
             # Initialize align object to align depth frames to color frames
             self.align = rs.align(rs.stream.color)
         else:
-            # Original webcam initialization code
+            #webcam initialization
             for index in range(2):
                 print(f"Attempting to open camera index {index}")
                 self.cap = cv2.VideoCapture(index)
@@ -55,7 +54,7 @@ class VideoThread(QThread):
             if not self.cap or not self.cap.isOpened():
                 raise RuntimeError("Error: Could not open any webcam. Please check connections.")
 
-            # Set camera properties for Logitech C922 Pro HD
+            # Set camera properties
             self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
             self.cap.set(cv2.CAP_PROP_FOCUS, 0)
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -113,7 +112,6 @@ class VideoThread(QThread):
             cv_img = cv2.resize(cv_img, (640, 480))
             cv_img = cv2.imread("test\workspace_test_01.png")
             
-            # Fix marker detection
             corners, ids, _ = self.aruco_detector.detector.detectMarkers(cv_img)
             valid_positions = {}
             temp_positions = {}  # Store both current and estimated positions
@@ -126,7 +124,6 @@ class VideoThread(QThread):
                     marker_id = ids[i][0]
                     if 0 <= marker_id <= 3:
                         marker_corners = corners[i][0]
-                        # Remove int() to keep float precision
                         center_x = np.mean(marker_corners[:, 0])  
                         center_y = np.mean(marker_corners[:, 1])
                         valid_positions[marker_id] = (center_x, center_y)
@@ -151,7 +148,7 @@ class VideoThread(QThread):
                     cv2.putText(cv_img, str(marker_id), 
                                 (display_pos[0] + 10, display_pos[1] + 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                    temp_positions[marker_id] = pos  # Keep original float values for calculations
+                    temp_positions[marker_id] = pos
 
             # If we have 3 markers, estimate the fourth
             if len(temp_positions) >= 3:
@@ -187,13 +184,13 @@ class VideoThread(QThread):
                 gap = 50  # 50-pixel gap
                 # First draw the original bottom rectangle
                 bottom_corners = [
-                    corners_ordered[0],  # Original top-left
-                    corners_ordered[1],  # Original top-right
-                    corners_ordered[2],  # Original bottom-right
+                    corners_ordered[0],  # top-left
+                    corners_ordered[1],  # top-right
+                    corners_ordered[2],  # bottom-right
                     corners_ordered[3]   # Original bottom-left
                 ]
                 
-                # Then draw the top rectangle with gap
+                # draw the top rectangle with gap
                 top_corners = [
                     (corners_ordered[0][0], corners_ordered[0][1] - gap),  # Top-left start
                     (corners_ordered[1][0], corners_ordered[1][1] - gap),  # Top-right start
@@ -258,7 +255,7 @@ class VideoThread(QThread):
                 }
                 self.workspace_bounds_signal.emit(x_fixed, y_fixed, box_width, box_height)
 
-                # Function to check if a point is on the left side of the split line
+                # check if a point is on the left side of the split line
                 def is_left_side(px, py):
                     # Vector from top mid to bottom mid
                     dx = bottom_mid_x - top_mid_x
@@ -269,7 +266,7 @@ class VideoThread(QThread):
                     # Cross product
                     return (dx * pdy - dy * pdx) > 0
 
-                # Add function to check if point is in top half of upper rectangle
+                # check if point is in top half of upper rectangle
                 def is_top_half(px, py, left_mid_x, left_mid_y, right_mid_x, right_mid_y):
                     # Vector from left to right of split line
                     dx = right_mid_x - left_mid_x
@@ -280,7 +277,7 @@ class VideoThread(QThread):
                     # Cross product (negative because coordinate system is flipped)
                     return -(dx * pdy - dy * pdx) > 0
 
-                # Color object detection using new ColorDetector
+                # Color object detection using ColorDetector
                 blurred = cv2.GaussianBlur(cv_img, (5, 5), 0)
                 hsv_img = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
                 
@@ -288,7 +285,6 @@ class VideoThread(QThread):
                 color_mask = ColorDetector.get_color_mask(hsv_img, self.detect_mode)
                 color_mask = ColorDetector.process_mask(color_mask)
                 
-                # Rest of the existing detection code
                 contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 detected_objects = []
                 pickable_objects_bottom = []  # For bottom rectangle
@@ -302,20 +298,18 @@ class VideoThread(QThread):
                             return False
                     return True
 
-                # Modify object detection to include both rectangles
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if 11 <= area <= 74:  # Updated area thresholds
-                        # Rest of the contour processing
+                    if 11 <= area <= 74:  # area thresholds
                         perimeter = cv2.arcLength(contour, True)
                         if perimeter > 0:
                             circularity = 4 * np.pi * area / (perimeter * perimeter)
                             
-                            # Updated circularity threshold to 0.6
+                            # circularity threshold to 0.6
                             if circularity > 0.70:
                                 M = cv2.moments(contour)
                                 if M['m00'] > 0:
-                                    # Keep original float precision for center coordinates
+                                    # center coordinates
                                     center_x = M['m10'] / M['m00']
                                     center_y = M['m01'] / M['m00']
                                     
@@ -333,32 +327,34 @@ class VideoThread(QThread):
                                     in_top_rect = (x_fixed <= center_x <= x_fixed + box_width) and (top_rect_y_start <= center_y <= top_rect_y_end)
 
                                     if in_bottom_rect:
-                                        # Original logic for bottom rectangle
+                                        # logic for bottom rectangle
                                         is_pickable = is_left_side(center_x, center_y)
                                         object_info = ("Circle", center_x, center_y, is_pickable, "bottom")
                                         detected_objects.append(object_info)
                                         if is_pickable:
                                             pickable_objects_bottom.append(object_info)
                                     elif in_top_rect:
-                                        # New logic for top rectangle
+                                        # logic for top rectangle
                                         is_pickable = is_top_half(center_x, center_y, left_mid_x, left_mid_y, right_mid_x, right_mid_y)
                                         object_info = ("Circle", center_x, center_y, is_pickable, "top")
                                         detected_objects.append(object_info)
                                         if is_pickable:
                                             pickable_objects_top.append(object_info)
 
-                # Replace single basket detection with multiple baskets
+                # baskets detection
+                detected_object_positions = [(x, y) for _, x, y, _, _ in detected_objects]
                 basket_infos = self.basket_detector.detect_basket(hsv_img, x_fixed, box_width, box_height, y_fixed)
                 if basket_infos:  # If any baskets were detected
-                    BasketDetector.draw_basket_grid(cv_img, basket_infos)
+                    grid_positions = BasketDetector.draw_basket_grid(cv_img, basket_infos, detected_object_positions)
+                    if grid_positions:
+                        self.available_positions['grid'] = grid_positions
 
                 # Sort objects by x coordinate separately for each rectangle
                 pickable_objects_bottom.sort(key=lambda obj: obj[1])
                 pickable_objects_top.sort(key=lambda obj: obj[1])
                 detected_objects.sort(key=lambda obj: obj[1])
 
-                # Only emit signal for the first pickable object (you can choose which list to prioritize)
-                # Here we're checking bottom first, but you can modify this logic
+                # Only emit signal for the first pickable object
                 if pickable_objects_bottom:
                     highest_priority = pickable_objects_bottom[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
@@ -400,7 +396,7 @@ class VideoThread(QThread):
                         tar_x = 0
                     self.target_signal.emit(tar_x, tar_y)
 
-                # Modified drawing code - only show details for highest priority object
+                # only show details for highest priority object
                 first_priority_bottom = None
                 first_priority_top = None
                 
@@ -453,7 +449,7 @@ class VideoThread(QThread):
                         cv2.putText(
                             cv_img,
                             status_text,
-                            (draw_x - 10, draw_y - 15),  # Using draw_x and draw_y (integers)
+                            (draw_x - 10, draw_y - 15),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.4,
                             color,
@@ -462,7 +458,7 @@ class VideoThread(QThread):
                         cv2.putText(
                             cv_img,
                             f"Ros:X{conv_x:.2f},Y{conv_y:.2f} {depth_text}",
-                            (draw_x - 10, draw_y),  # Using draw_x and draw_y (integers)
+                            (draw_x - 10, draw_y),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.4,
                             color,
@@ -489,19 +485,17 @@ class VideoThread(QThread):
                 if obj[3]:  # if is_pickable
                     self.available_positions['objects'].append((obj[1], obj[2]))  # x, y coordinates
 
-            # After basket detection
+            # After basket detection but before emitting available_positions
             if basket_infos:
-                grid_positions = {}
-                for basket_info in basket_infos:
-                    # Get all grid positions from the basket
-                    for row in range(basket_info['grid_params']['rows']):
-                        for col in range(basket_info['grid_params']['cols']):
-                            grid_id = f"{'L' if basket_info['center'][0] < cv_img.shape[1]/2 else 'R'}{row*basket_info['grid_params']['cols'] + col + 1}"
-                            pos = self.basket_detector.get_grid_position_by_id(cv_img, [basket_info], grid_id)
-                            if pos:
-                                grid_positions[grid_id] = pos
-
-                self.available_positions['grid'] = grid_positions
+                # Get grid positions with occupation status
+                grid_positions = BasketDetector.draw_basket_grid(cv_img, basket_infos, detected_object_positions)
+                if grid_positions:
+                    # Only store unoccupied positions in available_positions
+                    self.available_positions['grid'] = {
+                        pos_id: coords 
+                        for pos_id, coords in grid_positions.items() 
+                        if not pos_id.startswith('occupied_')
+                    }
                 
             # Emit updated positions
             self.available_positions_signal.emit(self.available_positions)
