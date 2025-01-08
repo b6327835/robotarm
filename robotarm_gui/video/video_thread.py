@@ -15,7 +15,7 @@ class VideoThread(QThread):
     available_positions_signal = pyqtSignal(dict)
     workspace_bounds_signal = pyqtSignal(float, float, float, float)
 
-    def __init__(self, use_realsense=False, use_calibration=False):
+    def __init__(self, use_realsense=True, use_calibration=False):
         super().__init__()
         self.detect_mode = "black"
         self.use_realsense = use_realsense
@@ -110,7 +110,7 @@ class VideoThread(QThread):
                 cv_img = cv2.undistort(cv_img, self.camera_matrix, self.dist_coeffs)
 
             cv_img = cv2.resize(cv_img, (640, 480))
-            cv_img = cv2.imread("test\workspace_test_01.png")
+            cv_img = cv2.imread("test/workspace_test_01.png")
             
             corners, ids, _ = self.aruco_detector.detector.detectMarkers(cv_img)
             valid_positions = {}
@@ -361,7 +361,7 @@ class VideoThread(QThread):
                     
                     # Add depth measurement for RealSense
                     if self.use_realsense and depth_frame:
-                        depth_value = depth_frame.get_distance(target_x, target_y)
+                        depth_value = depth_frame.get_distance(int(target_x), int(target_y))
                         # Convert depth to mm
                         depth_mm = int(depth_value * 1000)
                     else:
@@ -381,9 +381,9 @@ class VideoThread(QThread):
                     
                     # Add depth measurement for RealSense
                     if self.use_realsense and depth_frame:
-                        depth_value = depth_frame.get_distance(target_x, target_y)
+                        depth_value = depth_frame.get_distance(int(target_x), int(target_y))
                         # Convert depth to mm
-                        depth_mm = int(depth_value * 1000)
+                        depth_mm = float(depth_value * 1000)
                     else:
                         depth_mm = None
 

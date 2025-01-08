@@ -272,7 +272,7 @@ bool homeOneAxis(FastAccelStepper* stepper, int limitPin, const char* axisName) 
   // Set direction for continuous movement
   stepper->setSpeedInHz(HOMING_SPEED);
   stepper->setAcceleration(HOMING_ACCEL);
-  stepper->moveTo(-64,000); //(200mm + 20%) x 266.67 steps/mm = 64,000
+  stepper->moveTo(-64000); //(200mm + 20%) x 266.67 steps/mm = 64,000
   
   while (consistentCount < CONSISTENT_READINGS) {
     bool currentReading = digitalRead(limitPin);
