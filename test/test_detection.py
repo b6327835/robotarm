@@ -13,7 +13,7 @@ def nothing(x):
 
 def main():
     # Camera type flag
-    use_realsense = False  # Set to False for normal webcam
+    use_realsense = True  # Set to False for normal webcam
 
     # Initialize camera
     if use_realsense:

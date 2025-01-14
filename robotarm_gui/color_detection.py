@@ -21,18 +21,16 @@ class ColorDetector:
         
         elif detect_mode == "black":
             lower_color = np.array([0, 0, 0])
-            upper_color = np.array([180, 100, 78])  # Modified S and V max values
+            upper_color = np.array([180, 70, 90])  # Modified S and V max values
             return cv2.inRange(hsv_img, lower_color, upper_color)
         
         return np.zeros_like(hsv_img[:,:,0])
 
     @staticmethod
     def process_mask(color_mask):
-        kernel = np.ones((2,2), np.uint8)  # Changed kernel size to 2x2
-        # Apply erosion 3 times
-        for _ in range(3):
-            color_mask = cv2.erode(color_mask, kernel)
-        # Apply dilation 3 times
-        for _ in range(3):
-            color_mask = cv2.dilate(color_mask, kernel)
+        kernel = np.ones((6,6), np.uint8)  # Changed kernel size to 6x6
+        # Apply erosion 1 time
+        color_mask = cv2.erode(color_mask, kernel)
+        # Apply dilation 1 time
+        color_mask = cv2.dilate(color_mask, kernel)
         return color_mask

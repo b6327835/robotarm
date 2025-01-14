@@ -82,6 +82,20 @@ class BasketDetector:
         return False
 
     @staticmethod
+    def rotate_point(point, center, M):
+        """Rotate a point around a center using transformation matrix M"""
+        px, py = point
+        cx, cy = center
+        # Translate point to origin
+        px_t = px - cx
+        py_t = py - cy
+        # Apply rotation
+        px_r = M[0][0] * px_t + M[0][1] * py_t
+        py_r = M[1][0] * px_t + M[1][1] * py_t
+        # Translate back
+        return (int(px_r + cx), int(py_r + cy))
+
+    @staticmethod
     def draw_basket_grid(img, basket_infos, detected_objects=[]):
         # Handle single basket info being passed (backward compatibility)
         if not isinstance(basket_infos, list):
@@ -128,19 +142,14 @@ class BasketDetector:
             step_y = height / grid_rows
             M = cv2.getRotationMatrix2D((center_x, center_y), grid_angle, 1.0)
 
-            def rotate_point(point, center, matrix):
-                px = matrix[0][0] * (point[0] - center[0]) + matrix[0][1] * (point[1] - center[1]) + center[0]
-                py = matrix[1][0] * (point[0] - center[0]) + matrix[1][1] * (point[1] - center[1]) + center[1]
-                return (int(px), int(py))
-
             # Draw vertical grid lines
             for i in range(grid_cols + 1):
                 x_offset = (i * step_x) - (width / 2)
                 start_point = (center_x + x_offset, center_y - height/2)
                 end_point = (center_x + x_offset, center_y + height/2)
                 
-                start_rotated = rotate_point(start_point, (center_x, center_y), M)
-                end_rotated = rotate_point(end_point, (center_x, center_y), M)
+                start_rotated = BasketDetector.rotate_point(start_point, (center_x, center_y), M)
+                end_rotated = BasketDetector.rotate_point(end_point, (center_x, center_y), M)
                 
                 cv2.line(img, start_rotated, end_rotated, (0, 255, 255), 1)
 
@@ -150,8 +159,8 @@ class BasketDetector:
                 start_point = (center_x - width/2, center_y + y_offset)
                 end_point = (center_x + width/2, center_y + y_offset)
                 
-                start_rotated = rotate_point(start_point, (center_x, center_y), M)
-                end_rotated = rotate_point(end_point, (center_x, center_y), M)
+                start_rotated = BasketDetector.rotate_point(start_point, (center_x, center_y), M)
+                end_rotated = BasketDetector.rotate_point(end_point, (center_x, center_y), M)
                 
                 cv2.line(img, start_rotated, end_rotated, (0, 255, 255), 1)
 
@@ -202,8 +211,8 @@ class BasketDetector:
                 start_point = (center_x + x_offset, center_y - height/2)
                 end_point = (center_x + x_offset, center_y + height/2)
                 
-                start_rotated = rotate_point(start_point, (center_x, center_y), M)
-                end_rotated = rotate_point(end_point, (center_x, center_y), M)
+                start_rotated = BasketDetector.rotate_point(start_point, (center_x, center_y), M)
+                end_rotated = BasketDetector.rotate_point(end_point, (center_x, center_y), M)
                 
                 cv2.line(img, start_rotated, end_rotated, (0, 255, 255), 1)
 
@@ -213,8 +222,8 @@ class BasketDetector:
                 start_point = (center_x - width/2, center_y + y_offset)
                 end_point = (center_x + width/2, center_y + y_offset)
                 
-                start_rotated = rotate_point(start_point, (center_x, center_y), M)
-                end_rotated = rotate_point(end_point, (center_x, center_y), M)
+                start_rotated = BasketDetector.rotate_point(start_point, (center_x, center_y), M)
+                end_rotated = BasketDetector.rotate_point(end_point, (center_x, center_y), M)
                 
                 cv2.line(img, start_rotated, end_rotated, (0, 255, 255), 1)
 

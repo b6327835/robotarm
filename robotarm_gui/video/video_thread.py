@@ -7,6 +7,7 @@ from color_detection import ColorDetector
 import pickle
 import os
 from video.detect_basket import BasketDetector
+from utils.coordinate_converter import CoordinateConverter
 
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(np.ndarray)
@@ -84,6 +85,13 @@ class VideoThread(QThread):
 
     def run(self):
         while True:
+            # Initialize lists at the start of each loop
+            detected_objects = []
+            pickable_objects_bottom = []
+            pickable_objects_top = []
+            basket_infos = None
+            detected_object_positions = []
+
             if self.use_realsense:
                 # Get frameset of color and depth
                 frames = self.pipeline.wait_for_frames()
@@ -110,7 +118,7 @@ class VideoThread(QThread):
                 cv_img = cv2.undistort(cv_img, self.camera_matrix, self.dist_coeffs)
 
             cv_img = cv2.resize(cv_img, (640, 480))
-            cv_img = cv2.imread("test/workspace_test_01.png")
+            # cv_img = cv2.imread("test/workspace_test_01.png")
             
             corners, ids, _ = self.aruco_detector.detector.detectMarkers(cv_img)
             valid_positions = {}
@@ -291,7 +299,7 @@ class VideoThread(QThread):
                 pickable_objects_top = []     # For top rectangle
                 previous_centers = []  # List to store centers of detected objects
 
-                def check_min_distance(center, previous_centers, min_distance=3):
+                def check_min_distance(center, previous_centers, min_distance=1):
                     for prev_center in previous_centers:
                         dist = np.sqrt((center[0] - prev_center[0])**2 + (center[1] - prev_center[1])**2)
                         if dist < min_distance:
@@ -300,7 +308,7 @@ class VideoThread(QThread):
 
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if 11 <= area <= 74:  # area thresholds
+                    if 10 <= area <= 150:  # modified area thresholds
                         perimeter = cv2.arcLength(contour, True)
                         if perimeter > 0:
                             circularity = 4 * np.pi * area / (perimeter * perimeter)
@@ -359,41 +367,30 @@ class VideoThread(QThread):
                     highest_priority = pickable_objects_bottom[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
                     
-                    # Add depth measurement for RealSense
                     if self.use_realsense and depth_frame:
                         depth_value = depth_frame.get_distance(int(target_x), int(target_y))
-                        # Convert depth to mm
                         depth_mm = int(depth_value * 1000)
                     else:
                         depth_mm = None
 
-                    y_relative = (target_y - y_fixed) / box_height
-                    x_relative = (target_x - x_fixed) / box_width
-
-                    tar_x = (135 - (y_relative * 135))-(4)
-                    tar_y = (145 - (x_relative * 140))-(0)
-                    if tar_x < 0:
-                        tar_x = 0
+                    tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                        target_x, target_y, x_fixed, y_fixed, box_width, box_height
+                    )
                     self.target_signal.emit(tar_x, tar_y)
+
                 elif pickable_objects_top:
                     highest_priority = pickable_objects_top[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
                     
-                    # Add depth measurement for RealSense
                     if self.use_realsense and depth_frame:
                         depth_value = depth_frame.get_distance(int(target_x), int(target_y))
-                        # Convert depth to mm
                         depth_mm = float(depth_value * 1000)
                     else:
                         depth_mm = None
 
-                    y_relative = (target_y - y_fixed) / box_height
-                    x_relative = (target_x - x_fixed) / box_width
-
-                    tar_x = (135 - (y_relative * 135))-(4)
-                    tar_y = (145 - (x_relative * 140))-(0)
-                    if tar_x < 0:
-                        tar_x = 0
+                    tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                        target_x, target_y, x_fixed, y_fixed, box_width, box_height
+                    )
                     self.target_signal.emit(tar_x, tar_y)
 
                 # only show details for highest priority object
@@ -469,13 +466,9 @@ class VideoThread(QThread):
             if self.current_target_id and basket_infos:
                 grid_pos = self.basket_detector.get_grid_position_by_id(cv_img, basket_infos, self.current_target_id)
                 if grid_pos:
-                    # Convert to robot coordinates (similar to target_xy conversion)
-                    y_relative = (grid_pos[1] - y_fixed) / box_height
-                    x_relative = (grid_pos[0] - x_fixed) / box_width
-                    tar_x = (135 - (y_relative * 135))-(4)
-                    tar_y = (145 - (x_relative * 140))-(0)
-                    if tar_x < 0:
-                        tar_x = 0
+                    tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                        grid_pos[0], grid_pos[1], x_fixed, y_fixed, box_width, box_height
+                    )
                     self.grid_position_signal.emit(tar_x, tar_y)
                     self.current_target_id = None  # Reset after emitting
 

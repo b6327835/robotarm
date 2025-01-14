@@ -21,6 +21,7 @@ import queue
 from auto_pnp_thread import AutoPnPThread
 from gui_init import GUIInitializer
 from jog_controls import JogControls, MoveLControls
+from utils.coordinate_converter import CoordinateConverter
 
 class PositionSelectorDialog(QDialog):
     def __init__(self, positions, parent=None):
@@ -151,6 +152,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.auto_check_timer.timeout.connect(self.auto_pick_and_place)
         self.auto_check_timer.setInterval(10000)  # 10 seconds
 
+        self.coordinate_converter = CoordinateConverter()
+
     def update_image(self, cv_img):
         qt_img = self.convert_cv_qt(cv_img, 640, 480)
         self.Display.setPixmap(qt_img)
@@ -188,13 +191,10 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             if mode == "pnp" and dest_id:
                 # Get grid coordinates from available_positions
                 dest_x, dest_y = self.available_positions['grid'][dest_id]
-                # Convert to robot coordinates using stored workspace bounds
-                y_relative = (dest_y - self.workspace_bounds['y_fixed']) / self.workspace_bounds['box_height']
-                x_relative = (dest_x - self.workspace_bounds['x_fixed']) / self.workspace_bounds['box_width']
-                dest_x = (135 - (y_relative * 135)) - 4
-                dest_y = (145 - (x_relative * 140)) - 0
-                if dest_x < 0:
-                    dest_x = 0
+                # Convert to robot coordinates using coordinate converter
+                dest_x, dest_y = self.coordinate_converter.grid_to_robot_coordinates(
+                    dest_x, dest_y, self.workspace_bounds
+                )
             
             self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode, dest_x=dest_x, dest_y=dest_y)
             self.move_thread.movement_status.connect(self.handle_movement_status)
@@ -314,12 +314,9 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                 self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
                 self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
                 # Convert middle coordinates to robot coordinates
-                y_relative = (middle_coords[1] - self.workspace_bounds['y_fixed']) / self.workspace_bounds['box_height']
-                x_relative = (middle_coords[0] - self.workspace_bounds['x_fixed']) / self.workspace_bounds['box_width']
-                dest_x = (135 - (y_relative * 135)) - 4
-                dest_y = (145 - (x_relative * 140)) - 0
-                if dest_x < 0:
-                    dest_x = 0
+                dest_x, dest_y = self.coordinate_converter.grid_to_robot_coordinates(
+                    middle_coords[0], middle_coords[1], self.workspace_bounds
+                )
                 self.start_move_thread("pnp", dest_x=dest_x, dest_y=dest_y)
 
     def update_available_positions(self, positions):
