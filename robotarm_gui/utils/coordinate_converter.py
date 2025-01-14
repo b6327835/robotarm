@@ -18,8 +18,8 @@ class CoordinateConverter:
         y_relative = (target_y - y_fixed) / box_height
         x_relative = (target_x - x_fixed) / box_width
 
-        tar_x = (135 - (y_relative * 135)) - 4
-        tar_y = (145 - (x_relative * 140)) - 0
+        tar_x = (169 - (y_relative * 169)) - 4  # Changed from 135 to 169
+        tar_y = (193 - (x_relative * 193)) - 0  # Changed from 145 to 193
         
         if tar_x < 0:
             tar_x = 0
@@ -42,8 +42,8 @@ class CoordinateConverter:
         y_relative = (y - workspace_bounds['y_fixed']) / workspace_bounds['box_height']
         x_relative = (x - workspace_bounds['x_fixed']) / workspace_bounds['box_width']
         
-        tar_x = (135 - (y_relative * 135)) - 4
-        tar_y = (145 - (x_relative * 140)) - 0
+        tar_x = (169 - (y_relative * 169)) - 4  # Changed from 135 to 169
+        tar_y = (193 - (x_relative * 193)) - 0  # Changed from 145 to 193
         
         if tar_x < 0:
             tar_x = 0

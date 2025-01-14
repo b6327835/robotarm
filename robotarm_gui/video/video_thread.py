@@ -189,7 +189,7 @@ class VideoThread(QThread):
                 rect_height = max(corners_ordered[2][1], corners_ordered[3][1]) - min(corners_ordered[0][1], corners_ordered[1][1])
                 
                 # Calculate extension points with actual gap
-                gap = 50  # 50-pixel gap
+                gap = 10  # 50-pixel gap
                 # First draw the original bottom rectangle
                 bottom_corners = [
                     corners_ordered[0],  # top-left
@@ -420,17 +420,11 @@ class VideoThread(QThread):
                     
                     # Only draw detailed information for first priority objects
                     if obj == first_priority_bottom or obj == first_priority_top:
-                        if rect_location == "bottom":
-                            y_rel = (target_y - y_fixed) / box_height
-                            x_rel = (target_x - x_fixed) / box_width
-                            conv_x = 135 - (y_rel * 135)
-                            conv_y = 145 - (x_rel * 140)
-                        else:  # top rectangle
-                            y_rel = (target_y - top_rect_y_start) / rect_height
-                            x_rel = (target_x - x_fixed) / box_width
-                            conv_x = 135 - (y_rel * 135)
-                            conv_y = 145 - (x_rel * 140)
-                        
+                        # Convert to robot coordinates
+                        tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                            target_x, target_y, x_fixed, y_fixed, box_width, box_height
+                        )
+
                         status_text = f"{'B' if rect_location == 'bottom' else 'T'}1:Pickable"
 
                         # Get depth for priority object if using RealSense
@@ -442,7 +436,6 @@ class VideoThread(QThread):
                             depth_text = ""
 
                         # Draw detailed information only for priority object
-                        # Convert coordinates to integers for putText
                         cv2.putText(
                             cv_img,
                             status_text,
@@ -454,7 +447,7 @@ class VideoThread(QThread):
                         )
                         cv2.putText(
                             cv_img,
-                            f"Ros:X{conv_x:.2f},Y{conv_y:.2f} {depth_text}",
+                            f"Real:X{tar_x:.2f},Y{tar_y:.2f} {depth_text}",
                             (draw_x - 10, draw_y),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.4,

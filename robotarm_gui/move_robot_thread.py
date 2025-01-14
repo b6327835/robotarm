@@ -8,12 +8,12 @@ class MoveRobotThread(QThread):
 
     def __init__(self, x, y, z, mode, parent=None, dest_x=0.0, dest_y=0.0):
         super().__init__(parent)
-        # Assign positions directly without validation
-        self.x = round(x, 3) * 100
-        self.y = round(y, 3) * 100
-        self.z = round(z, 3) * 100
-        self.dest_x = round(dest_x, 3)
-        self.dest_y = round(dest_y, 3)
+        # Remove the *100 multiplication since values are already in correct scale
+        self.x = x
+        self.y = y
+        self.z = z
+        self.dest_x = dest_x
+        self.dest_y = dest_y
         self.mode = mode
         self.serial_port = None
 

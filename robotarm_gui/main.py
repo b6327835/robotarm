@@ -24,10 +24,11 @@ from jog_controls import JogControls, MoveLControls
 from utils.coordinate_converter import CoordinateConverter
 
 class PositionSelectorDialog(QDialog):
-    def __init__(self, positions, parent=None):
+    def __init__(self, positions, workspace_bounds, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Position")
         self.setModal(True)
+        self.workspace_bounds = workspace_bounds
         
         layout = QVBoxLayout()
         
@@ -38,13 +39,21 @@ class PositionSelectorDialog(QDialog):
             t_count = 1
             b_count = 1
             for x, y in positions['objects']:
+                # Convert to robot coordinates
+                robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
+                    x, y, 
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
+                )
                 if y < 240:
                     label = f"T{t_count}"
                     t_count += 1
                 else:
                     label = f"B{b_count}"
                     b_count += 1
-                self.objects_list.addItem(f"{label}: ({x:.2f}, {y:.2f})")
+                self.objects_list.addItem(f"{label}: ({robot_x:.2f}, {robot_y:.2f})")
             layout.addWidget(self.objects_list)
         
         # Destination (Grid) list
@@ -55,7 +64,15 @@ class PositionSelectorDialog(QDialog):
             for grid_id, (x, y) in positions['grid'].items():
                 # Skip any positions marked as occupied
                 if not grid_id.startswith('occupied_'):
-                    self.grid_list.addItem(f"{grid_id}: ({x:.2f}, {y:.2f})")
+                    # Convert to robot coordinates
+                    robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
+                        x, y,
+                        self.workspace_bounds['x_fixed'],
+                        self.workspace_bounds['y_fixed'],
+                        self.workspace_bounds['box_width'],
+                        self.workspace_bounds['box_height']
+                    )
+                    self.grid_list.addItem(f"{grid_id}: ({robot_x:.2f}, {robot_y:.2f})")
             layout.addWidget(self.grid_list)
         
         self.select_btn = QPushButton("Select")
@@ -167,12 +184,15 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         )
         p = convert_to_Qt_format.scaled(Wx, Hx, Qt.KeepAspectRatio)
         return QPixmap.fromImage(p)
-    def target_xy(self, target_x, target_y, z=0.12):
+    def target_xy(self, target_x, target_y, z=190):
+        """Handle target coordinates from video thread"""
+        # Use the target coordinates directly since they're already in robot space
         self.tar_x = target_x
         self.tar_y = target_y
-        self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
-        self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
-        self.object_queue.put((self.tar_x, self.tar_y))
+        # Display the values in millimeters (multiply by 1000 for display only)
+        self.Vision_X.setText(f"{target_x:.3f}")
+        self.Vision_Y.setText(f"{target_y:.3f}")
+        self.object_queue.put((target_x, target_y))
             
     def is_operation_running(self):
         return self.is_move_running or self.is_auto_pnp_running
@@ -187,16 +207,22 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         print(f"move mode: {mode}")
         self.move_mode = mode
         if not self.is_move_running:
-            print(f"Starting {mode} with X={self.tar_x * 0.001}, Y={self.tar_y * 0.001}, Z={self.tar_z * 0.001}")
+            print(f"Starting {mode} with X={self.tar_x}, Y={self.tar_y}, Z={self.tar_z}")
             if mode == "pnp" and dest_id:
                 # Get grid coordinates from available_positions
-                dest_x, dest_y = self.available_positions['grid'][dest_id]
-                # Convert to robot coordinates using coordinate converter
-                dest_x, dest_y = self.coordinate_converter.grid_to_robot_coordinates(
-                    dest_x, dest_y, self.workspace_bounds
+                grid_x, grid_y = self.available_positions['grid'][dest_id]
+                # Convert to robot coordinates
+                dest_x, dest_y = self.coordinate_converter.to_robot_coordinates(
+                    grid_x, grid_y,
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
                 )
             
-            self.move_thread = MoveRobotThread(self.tar_x * 0.001, self.tar_y * 0.001, self.tar_z * 0.001, self.move_mode, dest_x=dest_x, dest_y=dest_y)
+            # Values are in meters for the robot
+            self.move_thread = MoveRobotThread(self.tar_x, self.tar_y, self.tar_z,
+                                             self.move_mode, dest_x=dest_x, dest_y=dest_y)
             self.move_thread.movement_status.connect(self.handle_movement_status)
             self.move_thread.positions_update.connect(self.update_positions)
             self.move_thread.finished.connect(self.on_move_finished)
@@ -236,8 +262,9 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         """Handle grid position signal from video thread"""
         self.tar_x = x
         self.tar_y = y
-        self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
-        self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+        # Display the values in millimeters (multiply by 1000 for display only)
+        self.Vision_X.setText(f"{x * 1000:.3f}")
+        self.Vision_Y.setText(f"{y * 1000:.3f}")
         self.start_move_thread("move")  # Start movement to target position
         
     def move_to_grid_position(self):
@@ -331,29 +358,42 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         }
 
     def show_position_selector(self):
-        dialog = PositionSelectorDialog(self.available_positions, MainWindow)
+        dialog = PositionSelectorDialog(self.available_positions, self.workspace_bounds, MainWindow)
         if dialog.exec_() == QDialog.Accepted:
             source, destination = dialog.get_selected_positions()
             if source and destination:
-                # Handle source (object to pick)
                 if source[0] == 'object':
+                    # Get original camera coordinates
                     x, y = self.available_positions['objects'][source[1]]
-                    self.tar_x = x
-                    self.tar_y = y
-                    self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
-                    self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                    # Convert to robot coordinates
+                    robot_x, robot_y = self.coordinate_converter.to_robot_coordinates(
+                        x, y,
+                        self.workspace_bounds['x_fixed'],
+                        self.workspace_bounds['y_fixed'],
+                        self.workspace_bounds['box_width'],
+                        self.workspace_bounds['box_height']
+                    )
+                    self.tar_x = robot_x
+                    self.tar_y = robot_y
+                    self.Vision_X.setText(f"{robot_x:.3f}")
+                    self.Vision_Y.setText(f"{robot_y:.3f}")
                     
-                    # Store destination grid position and start PnP
                     if destination[0] == 'grid':
                         self.grid_target = destination[1]
-                        # Pass destination ID to start_move_thread
                         self.start_move_thread("pnp", dest_id=destination[1])
             elif source:  # Only object selected
                 x, y = self.available_positions['objects'][source[1]]
-                self.tar_x = x
-                self.tar_y = y
-                self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
-                self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                robot_x, robot_y = self.coordinate_converter.to_robot_coordinates(
+                    x, y,
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
+                )
+                self.tar_x = robot_x
+                self.tar_y = robot_y
+                self.Vision_X.setText(f"{robot_x:.3f}")
+                self.Vision_Y.setText(f"{robot_y:.3f}")
                 self.start_move_thread("move")
             elif destination:  # Only grid selected
                 self.grid_target = destination[1]
