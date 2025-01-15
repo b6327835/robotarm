@@ -282,8 +282,8 @@ class VideoThread(QThread):
                     # Vector from left mid to point
                     pdx = px - left_mid_x
                     pdy = py - left_mid_y
-                    # Cross product (negative because coordinate system is flipped)
-                    return -(dx * pdy - dy * pdx) > 0
+                    # Cross product (removed negative sign to swap sides)
+                    return (dx * pdy - dy * pdx) > 0
 
                 # Color object detection using ColorDetector
                 blurred = cv2.GaussianBlur(cv_img, (5, 5), 0)
