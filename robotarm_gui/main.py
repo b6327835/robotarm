@@ -29,17 +29,26 @@ class PositionSelectorDialog(QDialog):
         self.setWindowTitle("Select Position")
         self.setModal(True)
         self.workspace_bounds = workspace_bounds
+        self.positions = positions  # Store positions in the dialog instance
         
         layout = QVBoxLayout()
         
-        # Source (Objects) list
-        if positions['objects']:
-            layout.addWidget(QLabel("Select Source Object:"))
+        # Store the starting indices for both types of objects
+        self.pickable_start_idx = 0
+        self.non_pickable_start_idx = len(positions['pickable_objects'])
+        
+        # Combined objects list
+        if positions['pickable_objects'] or positions['non_pickable_objects']:
+            layout.addWidget(QLabel("Available Objects:"))
             self.objects_list = QListWidget()
-            t_count = 1
-            b_count = 1
-            for x, y in positions['objects']:
-                # Convert to robot coordinates
+            
+            pt_count = 1  # Pickable top counter
+            pb_count = 1  # Pickable bottom counter
+            nt_count = 1  # Non-pickable top counter
+            nb_count = 1  # Non-pickable bottom counter
+            
+            # Add pickable objects
+            for x, y in positions['pickable_objects']:
                 robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
                     x, y, 
                     self.workspace_bounds['x_fixed'],
@@ -48,23 +57,38 @@ class PositionSelectorDialog(QDialog):
                     self.workspace_bounds['box_height']
                 )
                 if y < 240:
-                    label = f"T{t_count}"
-                    t_count += 1
+                    label = f"T{pt_count}"
+                    pt_count += 1
                 else:
-                    label = f"B{b_count}"
-                    b_count += 1
+                    label = f"B{pb_count}"
+                    pb_count += 1
                 self.objects_list.addItem(f"{label}: ({robot_x:.2f}, {robot_y:.2f})")
+            
+            # Add non-pickable objects
+            for x, y in positions['non_pickable_objects']:
+                robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
+                    x, y, 
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
+                )
+                if y < 240:
+                    label = f"NT{nt_count}"
+                    nt_count += 1
+                else:
+                    label = f"NB{nb_count}"
+                    nb_count += 1
+                self.objects_list.addItem(f"{label}: ({robot_x:.2f}, {robot_y:.2f})")
+            
             layout.addWidget(self.objects_list)
-        
-        # Destination (Grid) list
+
+        # Destination grid list remains unchanged
         if positions['grid']:
             layout.addWidget(QLabel("Select Destination Grid:"))
             self.grid_list = QListWidget()
-            # Only show unoccupied grid positions
             for grid_id, (x, y) in positions['grid'].items():
-                # Skip any positions marked as occupied
                 if not grid_id.startswith('occupied_'):
-                    # Convert to robot coordinates
                     robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
                         x, y,
                         self.workspace_bounds['x_fixed'],
@@ -86,8 +110,15 @@ class PositionSelectorDialog(QDialog):
         destination = None
         
         if hasattr(self, 'objects_list') and self.objects_list.currentItem():
-            idx = self.objects_list.currentRow()
-            source = ('object', idx)
+            text = self.objects_list.currentItem().text()
+            label = text.split(':')[0].strip()
+            current_idx = self.objects_list.currentRow()
+            
+            # Use stored indices to correctly calculate the position
+            if label.startswith('N'):  # NT or NB
+                source = ('non_pickable', current_idx - self.non_pickable_start_idx)
+            else:  # T or B
+                source = ('pickable', current_idx)
             
         if hasattr(self, 'grid_list') and self.grid_list.currentItem():
             text = self.grid_list.currentItem().text()
@@ -101,7 +132,14 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         super().setupUi(MainWindow)
         self.gnc()
         
-        self.thread = VideoThread()
+        # Initialize video thread with both coordinate conversion flags
+        self.thread = VideoThread(
+            use_realsense=True,
+            use_calibration=False,
+            use_raw_coordinates=False, # Use corrected coordinates
+            use_interpolation=True    # Use simple scaling by default
+        )
+        
         self.thread.start()
         self.thread.change_pixmap_signal.connect(self.update_image)
         self.thread.target_signal.connect(self.target_xy)
@@ -138,7 +176,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.grid_target = "L1"  # Default grid target
 
         self.available_positions = {
-            'objects': [],
+            'pickable_objects': [],
+            'non_pickable_objects': [],
             'grid': {}
         }
         self.thread.available_positions_signal.connect(self.update_available_positions)
@@ -296,55 +335,90 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         
         x_fixed = self.workspace_bounds['x_fixed']
         y_fixed = self.workspace_bounds['y_fixed']
-        box_width = self.workspace_bounds['box_width']
+        box_height = self.workspace_bounds['box_height']
         
-        # Calculate center X and Y for placement
-        center_x = x_fixed + (box_width / 2)
-        # Y coordinate for bottom half of top rectangle (50 is the gap)
-        center_y = y_fixed - 50 - (box_width / 4)
+        # Center X (ensure within 0-300mm)
+        center_x = min(max(x_fixed + (box_height / 2), 0), 300)
         
+        # Calculate bottom half middle of top rectangle:
+        # y_fixed marks bottom of top rectangle
+        # Move up by gap (50mm)
+        # Top half point = y_fixed - gap - (box_height/2)
+        # Bottom half middle = top half point + (box_height/4)
+        center_y = min(max(
+            y_fixed - 10 - (box_height/2) + (box_height/4), 
+            0), 200)
+                
         return center_x, center_y
 
     def auto_pick_and_place(self):
         """Auto pick and place logic"""
-        if not self.is_auto_mode or self.is_move_running:
+        if not self.is_auto_mode or self.is_operation_running():
             return
 
-        # Check for T objects first
-        t_objects = [(i, pos) for i, pos in enumerate(self.available_positions['objects']) 
-                    if pos[1] < 240]  # Y < 240 means top rectangle
-        
-        # Then check for B objects
-        b_objects = [(i, pos) for i, pos in enumerate(self.available_positions['objects']) 
-                    if pos[1] >= 240]  # Y >= 240 means bottom rectangle
+        separation_y = self.workspace_bounds['y_fixed'] - 10  # Account for gap between rectangles
 
-        if t_objects:
-            # Pick T object and place in available R cell
-            obj_idx, (x, y) = t_objects[0]
-            available_cell = self.get_first_available_cell()
+        # Check for pickable objects in top area
+        top_objects = [(i, pos) for i, pos in enumerate(self.available_positions['pickable_objects']) 
+                    if pos[1] < separation_y]  
+
+        # Check for pickable objects in bottom area  
+        bottom_objects = [(i, pos) for i, pos in enumerate(self.available_positions['pickable_objects']) 
+                        if pos[1] >= separation_y]
+
+
+        if top_objects:
+            # Pick top object and place in available right cell
+            obj_idx, (x, y) = top_objects[0]
+            # Convert to robot coordinates
+            robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
+                x, y,
+                self.workspace_bounds['x_fixed'],
+                self.workspace_bounds['y_fixed'],
+                self.workspace_bounds['box_width'],
+                self.workspace_bounds['box_height']
+            )
             
+            # Get first available right cell
+            available_cell = self.get_first_available_cell()
             if available_cell:
-                self.tar_x = x
-                self.tar_y = y
-                self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
-                self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
+                self.tar_x = robot_x
+                self.tar_y = robot_y
+                self.Vision_X.setText(f"{robot_x:.3f}")
+                self.Vision_Y.setText(f"{robot_y:.3f}")
                 self.start_move_thread("pnp", dest_id=available_cell)
                 
-        elif b_objects:
-            # Pick B object and place in middle of top rectangle
-            obj_idx, (x, y) = b_objects[0]
-            middle_coords = self.calculate_middle_placement()
+        elif bottom_objects:
+            # Pick bottom object and place in middle of top area
+            obj_idx, (x, y) = bottom_objects[0]
+            # Convert to robot coordinates
+            robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
+                x, y,
+                self.workspace_bounds['x_fixed'],
+                self.workspace_bounds['y_fixed'],
+                self.workspace_bounds['box_width'],
+                self.workspace_bounds['box_height']
+            )
             
+            middle_coords = self.calculate_middle_placement()
             if middle_coords:
-                self.tar_x = x
-                self.tar_y = y
-                self.Vision_X.setText(f"{self.tar_x * 0.001:.3f}")
-                self.Vision_Y.setText(f"{self.tar_y * 0.001:.3f}")
-                # Convert middle coordinates to robot coordinates
-                dest_x, dest_y = self.coordinate_converter.grid_to_robot_coordinates(
-                    middle_coords[0], middle_coords[1], self.workspace_bounds
+                self.tar_x = robot_x
+                self.tar_y = robot_y
+                self.Vision_X.setText(f"{robot_x:.3f}")
+                self.Vision_Y.setText(f"{robot_y:.3f}")
+                dest_x, dest_y = CoordinateConverter.to_robot_coordinates(
+                    middle_coords[0], middle_coords[1],
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
                 )
                 self.start_move_thread("pnp", dest_x=dest_x, dest_y=dest_y)
+        else:
+            # No objects to pick, stop auto mode
+            self.is_auto_mode = False
+            self.auto_bt.setText("Auto")
+            self.auto_check_timer.stop()
 
     def update_available_positions(self, positions):
         self.available_positions = positions
@@ -361,28 +435,14 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         dialog = PositionSelectorDialog(self.available_positions, self.workspace_bounds, MainWindow)
         if dialog.exec_() == QDialog.Accepted:
             source, destination = dialog.get_selected_positions()
-            if source and destination:
-                if source[0] == 'object':
-                    # Get original camera coordinates
-                    x, y = self.available_positions['objects'][source[1]]
-                    # Convert to robot coordinates
-                    robot_x, robot_y = self.coordinate_converter.to_robot_coordinates(
-                        x, y,
-                        self.workspace_bounds['x_fixed'],
-                        self.workspace_bounds['y_fixed'],
-                        self.workspace_bounds['box_width'],
-                        self.workspace_bounds['box_height']
-                    )
-                    self.tar_x = robot_x
-                    self.tar_y = robot_y
-                    self.Vision_X.setText(f"{robot_x:.3f}")
-                    self.Vision_Y.setText(f"{robot_y:.3f}")
-                    
-                    if destination[0] == 'grid':
-                        self.grid_target = destination[1]
-                        self.start_move_thread("pnp", dest_id=destination[1])
-            elif source:  # Only object selected
-                x, y = self.available_positions['objects'][source[1]]
+            if source:
+                # Get coordinates based on source type
+                if source[0] == 'pickable':
+                    x, y = self.available_positions['pickable_objects'][source[1]]
+                else:  # non_pickable
+                    x, y = self.available_positions['non_pickable_objects'][source[1]]
+                
+                # Convert to robot coordinates
                 robot_x, robot_y = self.coordinate_converter.to_robot_coordinates(
                     x, y,
                     self.workspace_bounds['x_fixed'],
@@ -394,7 +454,12 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                 self.tar_y = robot_y
                 self.Vision_X.setText(f"{robot_x:.3f}")
                 self.Vision_Y.setText(f"{robot_y:.3f}")
-                self.start_move_thread("move")
+                
+                if destination:  # If grid destination selected
+                    self.grid_target = destination[1]
+                    self.start_move_thread("pnp", dest_id=destination[1])
+                else:  # Just move to object position
+                    self.start_move_thread("move")
             elif destination:  # Only grid selected
                 self.grid_target = destination[1]
                 self.thread.set_grid_target(destination[1])

@@ -16,11 +16,13 @@ class VideoThread(QThread):
     available_positions_signal = pyqtSignal(dict)
     workspace_bounds_signal = pyqtSignal(float, float, float, float)
 
-    def __init__(self, use_realsense=True, use_calibration=False):
+    def __init__(self, use_realsense=True, use_calibration=False, use_raw_coordinates=False, use_interpolation=False):
         super().__init__()
         self.detect_mode = "black"
         self.use_realsense = use_realsense
         self.use_calibration = use_calibration
+        self.use_raw_coordinates = use_raw_coordinates
+        self.use_interpolation = use_interpolation
         self.cap = None
         self.current_target_id = None
         self.available_positions = {
@@ -374,7 +376,9 @@ class VideoThread(QThread):
                         depth_mm = None
 
                     tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
-                        target_x, target_y, x_fixed, y_fixed, box_width, box_height
+                        target_x, target_y, x_fixed, y_fixed, box_width, box_height,
+                        use_raw=self.use_raw_coordinates,
+                        use_interpolation=self.use_interpolation
                     )
                     self.target_signal.emit(tar_x, tar_y)
 
@@ -389,7 +393,9 @@ class VideoThread(QThread):
                         depth_mm = None
 
                     tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
-                        target_x, target_y, x_fixed, y_fixed, box_width, box_height
+                        target_x, target_y, x_fixed, y_fixed, box_width, box_height,
+                        use_raw=self.use_raw_coordinates,
+                        use_interpolation=self.use_interpolation
                     )
                     self.target_signal.emit(tar_x, tar_y)
 
@@ -466,10 +472,13 @@ class VideoThread(QThread):
                     self.current_target_id = None  # Reset after emitting
 
             # After detecting objects, update available positions
-            self.available_positions['objects'] = []
+            self.available_positions['pickable_objects'] = []
+            self.available_positions['non_pickable_objects'] = []
             for obj in detected_objects:
                 if obj[3]:  # if is_pickable
-                    self.available_positions['objects'].append((obj[1], obj[2]))  # x, y coordinates
+                    self.available_positions['pickable_objects'].append((obj[1], obj[2]))  # x, y coordinates
+                else:
+                    self.available_positions['non_pickable_objects'].append((obj[1], obj[2]))  # x, y coordinates
 
             # After basket detection but before emitting available_positions
             if basket_infos:

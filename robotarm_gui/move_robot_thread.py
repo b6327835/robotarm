@@ -202,13 +202,17 @@ class MoveRobotThread(QThread):
             def pnp():
                 pnp_x = self.x
                 pnp_y = self.y
+                z = 175 if pnp_x > 169 else 190
+                
                 # Approach position from above
                 if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Approaching position"):
                     return
                 # Pick with vacuum on
-                if not self._execute_movement([pnp_x, pnp_y, 190], vacuum=0, description="move z"):
+                z = 175 if pnp_x > 169 else 190
+                if not self._execute_movement([pnp_x, pnp_y, z], vacuum=0, description="move z"):
                     return
-                if not self._execute_movement([pnp_x, pnp_y, 190], vacuum=1, description="Picking"):
+                z = 175 if pnp_x > 169 else 190
+                if not self._execute_movement([pnp_x, pnp_y, z], vacuum=1, description="Picking"):
                     return
                 # Lift with item
                 if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=1, description="Lifting"):
@@ -217,9 +221,11 @@ class MoveRobotThread(QThread):
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
                 # Place with vacuum release
-                if not self._execute_movement([self.dest_x, self.dest_y, 190], vacuum=1, description="move z"):
+                z = 175 if pnp_x > 169 else 190
+                if not self._execute_movement([self.dest_x, self.dest_y, z], vacuum=1, description="move z"):
                     return
-                if not self._execute_movement([self.dest_x, self.dest_y, 190], vacuum=2, description="Placing object"):
+                z = 175 if pnp_x > 169 else 190
+                if not self._execute_movement([self.dest_x, self.dest_y, z], vacuum=2, description="Placing object"):
                     return
                 # Lift after placing
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
