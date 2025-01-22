@@ -9,10 +9,10 @@ class BasketDetector:
             'low_h2': 160, 'high_h2': 180,
             'low_s': 60, 'high_s': 255,
             'low_v': 100, 'high_v': 255,
-            'min_area': 500,
+            'min_area': 400,  # Reduced to detect inner area
             'kernel_size': 1,
-            'erosion_iter': 0,
-            'dilation_iter': 1
+            'erosion_iter': 1,  # Added erosion to focus on inner lines
+            'dilation_iter': 0  # Removed dilation to prevent expanding
         }
         self.occupied_cells = {}  # Track occupied grid cells
 
@@ -30,8 +30,7 @@ class BasketDetector:
 
         # Apply morphological operations
         kernel = np.ones((self.params['kernel_size'], self.params['kernel_size']), np.uint8)
-        # red_mask = cv2.erode(red_mask, kernel, iterations=self.params['erosion_iter'])
-        red_mask = cv2.dilate(red_mask, kernel, iterations=self.params['dilation_iter'])
+        red_mask = cv2.erode(red_mask, kernel, iterations=self.params['erosion_iter'])
 
         # Find red basket contours
         red_contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -47,9 +46,13 @@ class BasketDetector:
                 
                 (center_x, center_y), (width, height), angle = rect
                 
+                # Adjust dimensions to target inner area
+                inner_margin = 10  # pixels to shrink from outer edge
                 if width < height:
-                    width, height = height, width
+                    width, height = height - inner_margin, width - inner_margin
                     angle += 90
+                else:
+                    width, height = width - inner_margin, height - inner_margin
                 grid_angle = -angle
 
                 # Check if basket is in bottom rectangle
@@ -96,7 +99,8 @@ class BasketDetector:
         return (int(px_r + cx), int(py_r + cy))
 
     @staticmethod
-    def draw_basket_grid(img, basket_infos, detected_objects=[]):
+    def draw_basket_grid(img, basket_infos, detected_objects=[], show_label=False):
+        """Draw basket grid with optional label display"""
         # Handle single basket info being passed (backward compatibility)
         if not isinstance(basket_infos, list):
             basket_infos = [basket_infos]
@@ -134,8 +138,15 @@ class BasketDetector:
             grid_rows = basket_info['grid_params']['rows']
             grid_cols = basket_info['grid_params']['cols']
 
-            # Draw yellow contour
-            cv2.drawContours(img, [box], 0, (0, 255, 255), 2)
+            # Skip drawing the yellow contour since we're focusing on inner grid
+            # Instead, draw a slightly smaller rectangle
+            inner_box = np.copy(box)
+            # Shrink the box towards center
+            # for i in range(len(inner_box)):
+            #     vec = inner_box[i] - np.array([center_x, center_y])
+            #     scale = 0.8  # Scale factor to shrink the box
+            #     inner_box[i] = np.array([center_x, center_y]) + vec * scale
+            # cv2.drawContours(img, [inner_box.astype(np.int32)], 0, (255, 255, 255), 1)
 
             # Calculate grid parameters and draw grid lines (existing code)
             step_x = width / grid_cols
@@ -178,10 +189,11 @@ class BasketDetector:
                     
                     # Always use red for left side (no occupation check needed)
                     cv2.circle(img, point_rotated, 2, (0, 0, 255), -1)
-                    label = f"L{left_counter}"
-                    cv2.putText(img, label, 
-                              (point_rotated[0] + 5, point_rotated[1] + 5),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
+                    if show_label:
+                        label = f"L{left_counter}"
+                        cv2.putText(img, label, 
+                                  (point_rotated[0] + 5, point_rotated[1] + 5),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
                     
                     # Add to grid positions
                     grid_positions[f"L{left_counter}"] = (px, py)
@@ -197,8 +209,15 @@ class BasketDetector:
             grid_rows = basket_info['grid_params']['rows']
             grid_cols = basket_info['grid_params']['cols']
 
-            # Draw yellow contour
-            cv2.drawContours(img, [box], 0, (0, 255, 255), 2)
+            # Skip drawing the yellow contour since we're focusing on inner grid
+            # Instead, draw a slightly smaller rectangle
+            inner_box = np.copy(box)
+            # Shrink the box towards center
+            # for i in range(len(inner_box)):
+            #     vec = inner_box[i] - np.array([center_x, center_y])
+            #     scale = 0.8  # Scale factor to shrink the box
+            #     inner_box[i] = np.array([center_x, center_y]) + vec * scale
+            # cv2.drawContours(img, [inner_box.astype(np.int32)], 0, (0, 255, 255), 1)
 
             # Calculate grid parameters and draw grid lines
             step_x = width / grid_cols
@@ -252,12 +271,13 @@ class BasketDetector:
                     # Draw dot and label with different color based on occupation
                     color = (255, 0, 0) if is_occupied else (0, 0, 255)  # Blue if occupied, red if free
                     cv2.circle(img, point_rotated, 2, color, -1)
-                    label = f"R{right_counter}"
-                    cv2.putText(img, label, 
-                              (point_rotated[0] + 5, point_rotated[1] + 5),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 1)
+                    if show_label:
+                        label = f"R{right_counter}"
+                        cv2.putText(img, label, 
+                                  (point_rotated[0] + 5, point_rotated[1] + 5),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 1)
                     
-                    # Add position to grid_positions with occupation status
+                    # Add position to grid positions with occupation status
                     if is_occupied:
                         grid_positions[f"occupied_R{right_counter}"] = (px, py)
                     else:
