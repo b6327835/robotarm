@@ -89,6 +89,19 @@ class VideoThread(QThread):
         self.grid_position_buffer = []
         self.basket_info_buffer = []
 
+        # Add smoothing parameters
+        self.frame_buffer_size = 60  # Increased from previous value
+        self.min_detection_confidence = 0.7  # Minimum confidence for object detection
+        self.position_threshold = 5  # Pixel threshold for position changes
+        self.depth_threshold = 50  # mm threshold for depth changes
+        
+        # Add tracking buffers
+        self.position_buffer = []
+        self.last_valid_position = None
+        self.last_valid_depth = None
+        self.stable_count = 0
+        self.min_stable_frames = 10  # Number of frames position must be stable
+
     def set_grid_target(self, target_id):
         """Set the target grid position (e.g., 'L3' or 'R5')"""
         self.current_target_id = target_id
@@ -136,6 +149,42 @@ class VideoThread(QThread):
         x_avg = sum(p[0] for p in points_list) / len(points_list)
         y_avg = sum(p[1] for p in points_list) / len(points_list)
         return (x_avg, y_avg)
+
+    def is_position_stable(self, new_pos, last_pos, threshold=5):
+        """Check if position has changed significantly"""
+        if last_pos is None or new_pos is None:
+            return False
+        return abs(new_pos[0] - last_pos[0]) < threshold and abs(new_pos[1] - last_pos[1]) < threshold
+
+    def apply_moving_average(self, positions, window_size=5):
+        """Apply moving average to smooth position data"""
+        if len(positions) < window_size:
+            return positions[-1] if positions else None
+        
+        recent_positions = positions[-window_size:]
+        avg_x = sum(p[0] for p in recent_positions) / window_size
+        avg_y = sum(p[1] for p in recent_positions) / window_size
+        return (avg_x, avg_y)
+
+    def filter_outliers(self, positions, threshold=2.0):
+        """Remove statistical outliers from position data"""
+        if not positions:
+            return []
+        
+        x_values = [p[0] for p in positions]
+        y_values = [p[1] for p in positions]
+        
+        x_mean = np.mean(x_values)
+        y_mean = np.mean(y_values)
+        x_std = np.std(x_values)
+        y_std = np.std(y_values)
+        
+        filtered = [(x, y) for x, y in positions if (
+            abs(x - x_mean) < threshold * x_std and 
+            abs(y - y_mean) < threshold * y_std
+        )]
+        
+        return filtered
 
     def run(self):
         # Initialize buffers for various measurements
@@ -388,8 +437,8 @@ class VideoThread(QThread):
                         if perimeter > 0:
                             circularity = 4 * np.pi * area / (perimeter * perimeter)
                             
-                            # circularity threshold to 0.6
-                            if circularity > 0.70:
+                            # Increased circularity threshold for more strict detection
+                            if circularity > self.min_detection_confidence:
                                 M = cv2.moments(contour)
                                 if M['m00'] > 0:
                                     # center coordinates
@@ -423,6 +472,28 @@ class VideoThread(QThread):
                                         detected_objects.append(object_info)
                                         if is_pickable:
                                             pickable_objects_top.append(object_info)
+
+                                    # Store position in buffer
+                                    current_pos = (center_x, center_y)
+                                    self.position_buffer.append(current_pos)
+                                    if len(self.position_buffer) > self.frame_buffer_size:
+                                        self.position_buffer.pop(0)
+                                    
+                                    # Filter outliers and apply moving average
+                                    filtered_positions = self.filter_outliers(self.position_buffer)
+                                    if filtered_positions:
+                                        smoothed_pos = self.apply_moving_average(filtered_positions)
+                                        
+                                        # Check position stability
+                                        if self.is_position_stable(smoothed_pos, self.last_valid_position):
+                                            self.stable_count += 1
+                                        else:
+                                            self.stable_count = 0
+                                        
+                                        # Only update position if stable for minimum frames
+                                        if self.stable_count >= self.min_stable_frames:
+                                            self.last_valid_position = smoothed_pos
+                                            center_x, center_y = smoothed_pos
 
                 # baskets detection
                 detected_object_positions = [(x, y) for _, x, y, _, _ in detected_objects]
@@ -458,16 +529,23 @@ class VideoThread(QThread):
 
                 # For depth measurements (RealSense only), add check for None
                 if self.use_realsense and depth_frame and depth_value is not None:
+                    # Apply temporal filtering to depth values
                     depth_buffer.append(depth_value)
                     if len(depth_buffer) > self.frame_buffer_size:
                         depth_buffer.pop(0)
-                    if len(depth_buffer) >= self.frame_buffer_size:
-                        # Filter out None values and calculate average
-                        valid_depths = [d for d in depth_buffer if d is not None]
-                        if valid_depths:
-                            depth_mm = int(sum(valid_depths) / len(valid_depths) * 1000)
+                    
+                    # Calculate median depth instead of mean
+                    valid_depths = [d for d in depth_buffer if d is not None]
+                    if valid_depths:
+                        current_depth = np.median(valid_depths)
+                        
+                        # Only update depth if change is significant
+                        if (self.last_valid_depth is None or 
+                            abs(current_depth - self.last_valid_depth) > self.depth_threshold):
+                            self.last_valid_depth = current_depth
+                            depth_mm = int(current_depth * 1000)
                         else:
-                            depth_mm = None
+                            depth_mm = int(self.last_valid_depth * 1000)
 
                 # Only emit signal for the first pickable object
                 if pickable_objects_bottom:
