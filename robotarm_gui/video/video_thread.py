@@ -81,12 +81,74 @@ class VideoThread(QThread):
 
         self.basket_detector = BasketDetector()
 
+        # Add frame buffering
+        self.frame_buffer_size = 60
+        self.position_buffer = []
+        self.marker_position_buffer = []
+        self.object_position_buffer = []
+        self.grid_position_buffer = []
+        self.basket_info_buffer = []
+
     def set_grid_target(self, target_id):
         """Set the target grid position (e.g., 'L3' or 'R5')"""
         self.current_target_id = target_id
 
+    def average_positions(self, positions_list):
+        if not positions_list:
+            return None
+        avg_positions = {}
+        # Get all unique keys across all dictionaries
+        all_keys = set().union(*positions_list)
+        
+        for key in all_keys:
+            # Get all values for this key that exist
+            values = [pos[key] for pos in positions_list if key in pos]
+            if values:
+                # Average the x,y coordinates separately
+                avg_x = sum(v[0] for v in values) / len(values)
+                avg_y = sum(v[1] for v in values) / len(values)
+                avg_positions[key] = (avg_x, avg_y)
+        return avg_positions
+
+    def average_basket_info(self, basket_info_list):
+        if not basket_info_list:
+            return None
+        
+        avg_info = []
+        # Group basket infos by their relative position
+        for i in range(len(basket_info_list[0])):  # Assume all lists have same number of baskets
+            basket_group = [info[i] for info in basket_info_list if i < len(info)]
+            if basket_group:
+                avg_basket = {
+                    'box': np.mean([b['box'] for b in basket_group], axis=0),
+                    'center': np.mean([b['center'] for b in basket_group], axis=0),
+                    'dimensions': np.mean([b['dimensions'] for b in basket_group], axis=0),
+                    'angle': np.mean([b['angle'] for b in basket_group]),
+                    'grid_params': basket_group[0]['grid_params']  # These don't need averaging
+                }
+                avg_info.append(avg_basket)
+        return avg_info
+
+    def average_point(self, points_list):
+        """Average a list of points"""
+        if not points_list:
+            return None
+        x_avg = sum(p[0] for p in points_list) / len(points_list)
+        y_avg = sum(p[1] for p in points_list) / len(points_list)
+        return (x_avg, y_avg)
+
     def run(self):
+        # Initialize buffers for various measurements
+        target_buffer = []
+        depth_buffer = []
+        corners_buffer = []
+        
         while True:
+            # Initialize target variables at start of loop
+            target_x = None
+            target_y = None
+            depth_value = None
+            
             # Initialize lists at the start of each loop
             detected_objects = []
             pickable_objects_bottom = []
@@ -144,6 +206,17 @@ class VideoThread(QThread):
                         cv2.circle(cv_img, (display_x, display_y), 5, (0, 0, 255), -1)
                         cv2.putText(cv_img, str(marker_id), (display_x + 10, display_y + 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+                # Store marker positions in buffer
+                self.marker_position_buffer.append(valid_positions)
+                if len(self.marker_position_buffer) > self.frame_buffer_size:
+                    self.marker_position_buffer.pop(0)
+                
+                # Calculate average marker positions
+                avg_positions = self.average_positions(self.marker_position_buffer)
+                if avg_positions:
+                    valid_positions = avg_positions
+                    self.aruco_detector.update_marker_positions(valid_positions)
 
             # Update stored positions in aruco detector
             self.aruco_detector.update_marker_positions(valid_positions)
@@ -364,15 +437,56 @@ class VideoThread(QThread):
                 pickable_objects_top.sort(key=lambda obj: obj[1])
                 detected_objects.sort(key=lambda obj: obj[1])
 
+                # After object detection, store target in buffer
+                if target_x is not None and target_y is not None:
+                    target_buffer.append((target_x, target_y))
+                    if len(target_buffer) > self.frame_buffer_size:
+                        target_buffer.pop(0)
+
+                    # Only emit target signal when we have enough samples
+                    if len(target_buffer) >= self.frame_buffer_size:
+                        avg_target = self.average_point(target_buffer)
+                        if avg_target:
+                            tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                                avg_target[0], avg_target[1],
+                                self.workspace_bounds['x_fixed'],
+                                self.workspace_bounds['y_fixed'],
+                                self.workspace_bounds['box_width'],
+                                self.workspace_bounds['box_height']
+                            )
+                            self.target_signal.emit(tar_x, tar_y)
+
+                # For depth measurements (RealSense only), add check for None
+                if self.use_realsense and depth_frame and depth_value is not None:
+                    depth_buffer.append(depth_value)
+                    if len(depth_buffer) > self.frame_buffer_size:
+                        depth_buffer.pop(0)
+                    if len(depth_buffer) >= self.frame_buffer_size:
+                        # Filter out None values and calculate average
+                        valid_depths = [d for d in depth_buffer if d is not None]
+                        if valid_depths:
+                            depth_mm = int(sum(valid_depths) / len(valid_depths) * 1000)
+                        else:
+                            depth_mm = None
+
                 # Only emit signal for the first pickable object
                 if pickable_objects_bottom:
                     highest_priority = pickable_objects_bottom[0]
                     target_x, target_y = highest_priority[1], highest_priority[2]
                     
                     if self.use_realsense and depth_frame:
-                        depth_value = depth_frame.get_distance(int(target_x), int(target_y))
-                        depth_mm = int(depth_value * 1000)
+                        try:
+                            depth_value = depth_frame.get_distance(int(target_x), int(target_y))
+                            if depth_value > 0:  # Validate depth reading
+                                depth_mm = int(depth_value * 1000)
+                            else:
+                                depth_value = None
+                                depth_mm = None
+                        except:
+                            depth_value = None
+                            depth_mm = None
                     else:
+                        depth_value = None
                         depth_mm = None
 
                     tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
@@ -482,15 +596,56 @@ class VideoThread(QThread):
 
             # After basket detection but before emitting available_positions
             if basket_infos:
-                # Get grid positions with occupation status
-                grid_positions = BasketDetector.draw_basket_grid(cv_img, basket_infos, detected_object_positions)
-                if grid_positions:
-                    # Only store unoccupied positions in available_positions
-                    self.available_positions['grid'] = {
-                        pos_id: coords 
-                        for pos_id, coords in grid_positions.items() 
-                        if not pos_id.startswith('occupied_')
-                    }
+                self.basket_info_buffer.append(basket_infos)
+                if len(self.basket_info_buffer) > self.frame_buffer_size:
+                    self.basket_info_buffer.pop(0)
+                
+                # Use averaged basket info for grid positions
+                avg_basket_infos = self.average_basket_info(self.basket_info_buffer)
+                if avg_basket_infos:
+                    grid_positions = BasketDetector.draw_basket_grid(cv_img, avg_basket_infos, detected_object_positions)
+                    if grid_positions:
+                        self.available_positions['grid'] = grid_positions
+
+            # Calculate average object positions before emitting signals
+            if detected_objects:
+                self.object_position_buffer.append({
+                    'pickable': [(obj[1], obj[2]) for obj in detected_objects if obj[3]],
+                    'non_pickable': [(obj[1], obj[2]) for obj in detected_objects if not obj[3]]
+                })
+                if len(self.object_position_buffer) > self.frame_buffer_size:
+                    self.object_position_buffer.pop(0)
+
+            if len(self.object_position_buffer) >= self.frame_buffer_size:
+                avg_pickable = []
+                avg_non_pickable = []
+                
+                for obj_type in ['pickable', 'non_pickable']:
+                    positions = [frame[obj_type] for frame in self.object_position_buffer]
+                    if positions:
+                        # Flatten the list of positions
+                        all_positions = [pos for sublist in positions for pos in sublist]
+                        if all_positions:
+                            avg_x = sum(p[0] for p in all_positions) / len(all_positions)
+                            avg_y = sum(p[1] for p in all_positions) / len(all_positions)
+                            if obj_type == 'pickable':
+                                avg_pickable.append((avg_x, avg_y))
+                            else:
+                                avg_non_pickable.append((avg_x, avg_y))
+
+                self.available_positions['pickable_objects'] = avg_pickable
+                self.available_positions['non_pickable_objects'] = avg_non_pickable
+
+                # Emit averaged positions
+                if avg_pickable:
+                    tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                        avg_pickable[0][0], avg_pickable[0][1],
+                        self.workspace_bounds['x_fixed'],
+                        self.workspace_bounds['y_fixed'],
+                        self.workspace_bounds['box_width'],
+                        self.workspace_bounds['box_height']
+                    )
+                    self.target_signal.emit(tar_x, tar_y)
                 
             # Emit updated positions
             self.available_positions_signal.emit(self.available_positions)
