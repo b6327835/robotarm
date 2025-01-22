@@ -29,26 +29,21 @@ class PositionSelectorDialog(QDialog):
         self.setWindowTitle("Select Position")
         self.setModal(True)
         self.workspace_bounds = workspace_bounds
-        self.positions = positions  # Store positions in the dialog instance
+        self.positions = positions
         
         layout = QVBoxLayout()
         
-        # Store the starting indices for both types of objects
+        # Clear existing object counters
         self.pickable_start_idx = 0
-        self.non_pickable_start_idx = len(positions['pickable_objects'])
+        self.non_pickable_start_idx = 0
         
-        # Combined objects list
+        # Initialize object lists with averaged positions
         if positions['pickable_objects'] or positions['non_pickable_objects']:
             layout.addWidget(QLabel("Available Objects:"))
             self.objects_list = QListWidget()
             
-            pt_count = 1  # Pickable top counter
-            pb_count = 1  # Pickable bottom counter
-            nt_count = 1  # Non-pickable top counter
-            nb_count = 1  # Non-pickable bottom counter
-            
-            # Add pickable objects
-            for x, y in positions['pickable_objects']:
+            # Add pickable objects with their averaged positions
+            for i, (x, y) in enumerate(positions['pickable_objects']):
                 robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
                     x, y, 
                     self.workspace_bounds['x_fixed'],
@@ -56,16 +51,15 @@ class PositionSelectorDialog(QDialog):
                     self.workspace_bounds['box_width'],
                     self.workspace_bounds['box_height']
                 )
-                if y < 240:
-                    label = f"T{pt_count}"
-                    pt_count += 1
-                else:
-                    label = f"B{pb_count}"
-                    pb_count += 1
-                self.objects_list.addItem(f"{label}: ({robot_x:.2f}, {robot_y:.2f})")
+                # Use averaged y coordinate for top/bottom determination
+                label = f"{'T' if y < 240 else 'B'}{i+1}"
+                self.objects_list.addItem(f"P-{label}: ({robot_x:.2f}, {robot_y:.2f})")
             
-            # Add non-pickable objects
-            for x, y in positions['non_pickable_objects']:
+            # Update non-pickable start index
+            self.non_pickable_start_idx = len(positions['pickable_objects'])
+            
+            # Add non-pickable objects with their actual positions
+            for i, (x, y) in enumerate(positions['non_pickable_objects']):
                 robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
                     x, y, 
                     self.workspace_bounds['x_fixed'],
@@ -73,21 +67,19 @@ class PositionSelectorDialog(QDialog):
                     self.workspace_bounds['box_width'],
                     self.workspace_bounds['box_height']
                 )
-                if y < 240:
-                    label = f"NT{nt_count}"
-                    nt_count += 1
-                else:
-                    label = f"NB{nb_count}"
-                    nb_count += 1
-                self.objects_list.addItem(f"{label}: ({robot_x:.2f}, {robot_y:.2f})")
+                # Determine if object is in top or bottom half
+                label = f"{'T' if y < 240 else 'B'}{i+1}"
+                self.objects_list.addItem(f"NP-{label}: ({robot_x:.2f}, {robot_y:.2f})")
             
             layout.addWidget(self.objects_list)
 
-        # Destination grid list remains unchanged
+        # Add grid positions
         if positions['grid']:
             layout.addWidget(QLabel("Select Destination Grid:"))
             self.grid_list = QListWidget()
-            for grid_id, (x, y) in positions['grid'].items():
+            # Sort grid positions by ID for consistent ordering
+            sorted_grid = sorted(positions['grid'].items())
+            for grid_id, (x, y) in sorted_grid:
                 if not grid_id.startswith('occupied_'):
                     robot_x, robot_y = CoordinateConverter.to_robot_coordinates(
                         x, y,
@@ -104,20 +96,19 @@ class PositionSelectorDialog(QDialog):
         layout.addWidget(self.select_btn)
         
         self.setLayout(layout)
-    
+
     def get_selected_positions(self):
         source = None
         destination = None
         
         if hasattr(self, 'objects_list') and self.objects_list.currentItem():
             text = self.objects_list.currentItem().text()
-            label = text.split(':')[0].strip()
             current_idx = self.objects_list.currentRow()
             
-            # Use stored indices to correctly calculate the position
-            if label.startswith('N'):  # NT or NB
+            # Determine if pickable or non-pickable based on prefix
+            if text.startswith('NP-'):
                 source = ('non_pickable', current_idx - self.non_pickable_start_idx)
-            else:  # T or B
+            else:  # Pickable object
                 source = ('pickable', current_idx)
             
         if hasattr(self, 'grid_list') and self.grid_list.currentItem():

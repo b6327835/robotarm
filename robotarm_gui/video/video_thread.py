@@ -563,9 +563,6 @@ class VideoThread(QThread):
                         except:
                             depth_value = None
                             depth_mm = None
-                    else:
-                        depth_value = None
-                        depth_mm = None
 
                     tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
                         target_x, target_y, x_fixed, y_fixed, box_width, box_height,
@@ -664,28 +661,7 @@ class VideoThread(QThread):
                     self.current_target_id = None  # Reset after emitting
 
             # After detecting objects, update available positions
-            self.available_positions['pickable_objects'] = []
-            self.available_positions['non_pickable_objects'] = []
-            for obj in detected_objects:
-                if obj[3]:  # if is_pickable
-                    self.available_positions['pickable_objects'].append((obj[1], obj[2]))  # x, y coordinates
-                else:
-                    self.available_positions['non_pickable_objects'].append((obj[1], obj[2]))  # x, y coordinates
-
-            # After basket detection but before emitting available_positions
-            if basket_infos:
-                self.basket_info_buffer.append(basket_infos)
-                if len(self.basket_info_buffer) > self.frame_buffer_size:
-                    self.basket_info_buffer.pop(0)
-                
-                # Use averaged basket info for grid positions
-                avg_basket_infos = self.average_basket_info(self.basket_info_buffer)
-                if avg_basket_infos:
-                    grid_positions = BasketDetector.draw_basket_grid(cv_img, avg_basket_infos, detected_object_positions)
-                    if grid_positions:
-                        self.available_positions['grid'] = grid_positions
-
-            # Calculate average object positions before emitting signals
+            # Store positions in buffer for averaging
             if detected_objects:
                 self.object_position_buffer.append({
                     'pickable': [(obj[1], obj[2]) for obj in detected_objects if obj[3]],
@@ -694,40 +670,61 @@ class VideoThread(QThread):
                 if len(self.object_position_buffer) > self.frame_buffer_size:
                     self.object_position_buffer.pop(0)
 
-            if len(self.object_position_buffer) >= self.frame_buffer_size:
-                avg_pickable = []
-                avg_non_pickable = []
-                
-                for obj_type in ['pickable', 'non_pickable']:
-                    positions = [frame[obj_type] for frame in self.object_position_buffer]
-                    if positions:
-                        # Flatten the list of positions
-                        all_positions = [pos for sublist in positions for pos in sublist]
-                        if all_positions:
-                            avg_x = sum(p[0] for p in all_positions) / len(all_positions)
-                            avg_y = sum(p[1] for p in all_positions) / len(all_positions)
-                            if obj_type == 'pickable':
-                                avg_pickable.append((avg_x, avg_y))
-                            else:
-                                avg_non_pickable.append((avg_x, avg_y))
+            # Calculate stable averaged positions
+            self.available_positions['pickable_objects'] = []
+            self.available_positions['non_pickable_objects'] = []
 
-                self.available_positions['pickable_objects'] = avg_pickable
-                self.available_positions['non_pickable_objects'] = avg_non_pickable
-
-                # Emit averaged positions
-                if avg_pickable:
-                    tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
-                        avg_pickable[0][0], avg_pickable[0][1],
-                        self.workspace_bounds['x_fixed'],
-                        self.workspace_bounds['y_fixed'],
-                        self.workspace_bounds['box_width'],
-                        self.workspace_bounds['box_height']
-                    )
-                    self.target_signal.emit(tar_x, tar_y)
+            if len(self.object_position_buffer) >= 3:  # Use minimum 3 frames for stability
+                # Group positions by proximity
+                pickable_groups = self.group_positions([pos for frame in self.object_position_buffer 
+                                                     for pos in frame['pickable']], threshold=10)
+                non_pickable_groups = self.group_positions([pos for frame in self.object_position_buffer 
+                                                          for pos in frame['non_pickable']], threshold=10)
                 
-            # Emit updated positions
+                # Average each group
+                for group in pickable_groups:
+                    if len(group) >= 3:  # Only use groups that appear in at least 3 frames
+                        avg_x = sum(x for x, _ in group) / len(group)
+                        avg_y = sum(y for _, y in group) / len(group)
+                        self.available_positions['pickable_objects'].append((avg_x, avg_y))
+                
+                for group in non_pickable_groups:
+                    if len(group) >= 3:
+                        avg_x = sum(x for x, _ in group) / len(group)
+                        avg_y = sum(y for _, y in group) / len(group)
+                        self.available_positions['non_pickable_objects'].append((avg_x, avg_y))
+
+            # Emit the averaged positions
             self.available_positions_signal.emit(self.available_positions)
 
+            # After basket detection but before emitting available_positions
+            if basket_infos:
+                self.basket_info_buffer.append(basket_infos)
+                if len(self.basket_info_buffer) > self.frame_buffer_size:
+                    self.basket_info_buffer.pop(0)
+                
+                avg_basket_infos = self.average_basket_info(self.basket_info_buffer)
+                if avg_basket_infos:
+                    grid_positions = BasketDetector.draw_basket_grid(cv_img, avg_basket_infos, detected_object_positions)
+                    if grid_positions:
+                        self.available_positions['grid'] = grid_positions
+
+            # Remove the position averaging for object list
+            # We'll keep all detected objects instead of averaging them
+            self.available_positions_signal.emit(self.available_positions)
+
+            # Only average the target position for movement
+            if len(self.position_buffer) >= self.frame_buffer_size and self.available_positions['pickable_objects']:
+                first_pickable = self.available_positions['pickable_objects'][0]
+                tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
+                    first_pickable[0], first_pickable[1],
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
+                )
+                self.target_signal.emit(tar_x, tar_y)
+                
             self.change_pixmap_signal.emit(cv_img)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -735,6 +732,35 @@ class VideoThread(QThread):
 
         self.cap.release()
         cv2.destroyAllWindows()
+
+    def group_positions(self, positions, threshold=10):
+        """Group positions that are close to each other"""
+        if not positions:
+            return []
+        
+        groups = []
+        used = set()
+        
+        for i, pos1 in enumerate(positions):
+            if i in used:
+                continue
+                
+            current_group = [pos1]
+            used.add(i)
+            
+            for j, pos2 in enumerate(positions):
+                if j in used:
+                    continue
+                    
+                # Calculate distance between positions
+                dist = np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+                if dist < threshold:
+                    current_group.append(pos2)
+                    used.add(j)
+            
+            groups.append(current_group)
+        
+        return groups
 
     def __del__(self):
         if self.use_realsense:
