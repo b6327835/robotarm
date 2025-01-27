@@ -16,6 +16,8 @@ class MoveRobotThread(QThread):
         self.dest_y = dest_y
         self.mode = mode
         self.serial_port = None
+        self.z_top = 170
+        self.z_bottom = 190
 
     def _connect_serial(self):
         """Only connect if no existing connection"""
@@ -155,8 +157,12 @@ class MoveRobotThread(QThread):
 
     def _execute_movement(self, positions, vacuum=0, description="Moving", max_attempts=2):
         """Execute movement with enhanced error handling and logging."""
-        # Format command with 3 decimal precision
-        command = f"x{positions[0]:.3f},y{positions[1]:.3f},z{positions[2]:.3f},v{vacuum}"
+        # Special handling for HOME command
+        if positions == "INIT":
+            command = "INIT"
+        else:
+            # Format command with 3 decimal precision
+            command = f"x{positions[0]:.3f},y{positions[1]:.3f},z{positions[2]:.3f},v{vacuum}"
         
         for attempt in range(max_attempts):
             self.movement_status.emit(f"{description}: {positions} (Attempt {attempt + 1})")
@@ -202,30 +208,32 @@ class MoveRobotThread(QThread):
             def pnp():
                 pnp_x = self.x
                 pnp_y = self.y
-                z = 175 if pnp_x > 169 else 190
+                # Calculate pick and place heights separately
+                pick_z = self.z_top if pnp_x > 169 else self.z_bottom
+                place_z = self.z_top if self.dest_x > 169 else self.z_bottom
                 
                 # Approach position from above
                 if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Approaching position"):
                     return
-                # Pick with vacuum on
-                z = 175 if pnp_x > 169 else 190
-                if not self._execute_movement([pnp_x, pnp_y, z], vacuum=0, description="move z"):
+                # Pick with vacuum on then off
+                if not self._execute_movement([pnp_x, pnp_y, pick_z], vacuum=0, description="move z"):
                     return
-                z = 175 if pnp_x > 169 else 190
-                if not self._execute_movement([pnp_x, pnp_y, z], vacuum=1, description="Picking"):
+                if not self._execute_movement([pnp_x, pnp_y, pick_z], vacuum=1, description="Picking"):
+                    return
+                if not self._execute_movement([pnp_x, pnp_y, pick_z], vacuum=0, description="Picking"):
                     return
                 # Lift with item
-                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=1, description="Lifting"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Lifting"):
                     return
                 # Move to placement position
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Moving to placement"):
                     return
                 # Place with vacuum release
-                z = 175 if pnp_x > 169 else 190
-                if not self._execute_movement([self.dest_x, self.dest_y, z], vacuum=1, description="move z"):
+                if not self._execute_movement([self.dest_x, self.dest_y, place_z], vacuum=0, description="move z"):
                     return
-                z = 175 if pnp_x > 169 else 190
-                if not self._execute_movement([self.dest_x, self.dest_y, z], vacuum=2, description="Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, place_z], vacuum=2, description="Placing object"):
+                    return
+                if not self._execute_movement([self.dest_x, self.dest_y, place_z], vacuum=0, description="Placing object"):
                     return
                 # Lift after placing
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
@@ -234,15 +242,15 @@ class MoveRobotThread(QThread):
                 if not self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home"):
                     return
                 print("Completed pnp movement.")
-
             def pick():
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching pick position"):
                     return
-                self._execute_movement([self.x, self.y, 190], vacuum=1, description="Picking")
+                self._execute_movement([self.x, self.y, self.z_bottom], vacuum=1, description="Picking")
 
             def home():
-                self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home")
-
+                self._execute_movement([0,0,0], vacuum=0, description="Returning home")
+            def initial():
+                self._execute_movement("HOME", vacuum=0, description="Initial position")
             def auto_pnp():
                 # Use self.x and self.y for the object's position
                 pick_x = self.x
@@ -250,7 +258,7 @@ class MoveRobotThread(QThread):
                 # Pick
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching object"):
                     return
-                if not self._execute_movement([self.x, self.y, 190], vacuum=1, description="Picking object"):
+                if not self._execute_movement([self.x, self.y, self.z_bottom], vacuum=1, description="Picking object"):
                     return
                 # Lift
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=1, description="Lifting object"):
@@ -258,7 +266,7 @@ class MoveRobotThread(QThread):
                 # Move to placement position
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
-                if not self._execute_movement([self.dest_x, self.dest_y, 190], vacuum=2, description="Placing object"):
+                if not self._execute_movement([self.dest_x, self.dest_y, self.z_bottom], vacuum=2, description="Placing object"):
                     return
                 # Lift after placing
                 if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting after placing"):
@@ -274,6 +282,7 @@ class MoveRobotThread(QThread):
                 "pnp": pnp,
                 "pick": pick,
                 "home": home,
+                "init": initial,
                 "auto_pnp": auto_pnp
             }
             
