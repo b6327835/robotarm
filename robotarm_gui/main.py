@@ -53,7 +53,7 @@ class PositionSelectorDialog(QDialog):
                 )
                 # Use averaged y coordinate for top/bottom determination
                 label = f"{'T' if y < 240 else 'B'}{i+1}"
-                self.objects_list.addItem(f"P-{label}: ({robot_x:.2f}, {robot_y:.2f})")
+                self.objects_list.addItem(f"P-{label}: Cam({x:.3f}, {y:.3f}) → Real({robot_x:.3f}, {robot_y:.3f})")
             
             # Update non-pickable start index
             self.non_pickable_start_idx = len(positions['pickable_objects'])
@@ -69,7 +69,7 @@ class PositionSelectorDialog(QDialog):
                 )
                 # Determine if object is in top or bottom half
                 label = f"{'T' if y < 240 else 'B'}{i+1}"
-                self.objects_list.addItem(f"NP-{label}: ({robot_x:.2f}, {robot_y:.2f})")
+                self.objects_list.addItem(f"NP-{label}: Cam({x:.3f}, {y:.3f}) → Real({robot_x:.3f}, {robot_y:.3f})")
             
             layout.addWidget(self.objects_list)
 
@@ -88,7 +88,7 @@ class PositionSelectorDialog(QDialog):
                         self.workspace_bounds['box_width'],
                         self.workspace_bounds['box_height']
                     )
-                    self.grid_list.addItem(f"{grid_id}: ({robot_x:.2f}, {robot_y:.2f})")
+                    self.grid_list.addItem(f"{grid_id}: Cam({x:.3f}, {y:.3f}) → Real({robot_x:.3f}, {robot_y:.3f})")
             layout.addWidget(self.grid_list)
         
         self.select_btn = QPushButton("Select")
@@ -123,12 +123,12 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         super().setupUi(MainWindow)
         self.gnc()
         
-        # Initialize video thread with both coordinate conversion flags
+        # Initialize video thread
         self.thread = VideoThread(
             use_realsense=True,
             use_calibration=False,
-            use_raw_coordinates=False, # Use corrected coordinates
-            use_interpolation=True    # Use simple scaling by default
+            use_raw_coordinates=False,
+            use_interpolation=True
         )
         
         self.thread.start()
