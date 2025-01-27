@@ -256,16 +256,8 @@ class VideoThread(QThread):
                         cv2.putText(cv_img, str(marker_id), (display_x + 10, display_y + 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
-                # Store marker positions in buffer
-                self.marker_position_buffer.append(valid_positions)
-                if len(self.marker_position_buffer) > self.frame_buffer_size:
-                    self.marker_position_buffer.pop(0)
-                
-                # Calculate average marker positions
-                avg_positions = self.average_positions(self.marker_position_buffer)
-                if avg_positions:
-                    valid_positions = avg_positions
-                    self.aruco_detector.update_marker_positions(valid_positions)
+                # Update marker positions directly without averaging
+                self.aruco_detector.update_marker_positions(valid_positions)
 
             # Update stored positions in aruco detector
             self.aruco_detector.update_marker_positions(valid_positions)
@@ -413,17 +405,21 @@ class VideoThread(QThread):
                 blurred = cv2.GaussianBlur(cv_img, (5, 5), 0)
                 hsv_img = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
                 
-                # Get and process color mask
-                color_mask = ColorDetector.get_color_mask(hsv_img, self.detect_mode)
-                color_mask = ColorDetector.process_mask(color_mask)
+                # Get and process color mask for objects
+                objects_mask = ColorDetector.get_color_mask(hsv_img, self.detect_mode)
+                objects_mask = ColorDetector.process_mask(objects_mask, 
+                                                        kernel_size=2,
+                                                        erode_count=1, 
+                                                        dilate_count=0)
                 
-                contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                # Process objects with objects_mask
+                contours, _ = cv2.findContours(objects_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 detected_objects = []
                 pickable_objects_bottom = []  # For bottom rectangle
                 pickable_objects_top = []     # For top rectangle
                 previous_centers = []  # List to store centers of detected objects
 
-                def check_min_distance(center, previous_centers, min_distance=1):
+                def check_min_distance(center, previous_centers, min_distance=3):
                     for prev_center in previous_centers:
                         dist = np.sqrt((center[0] - prev_center[0])**2 + (center[1] - prev_center[1])**2)
                         if dist < min_distance:
@@ -432,7 +428,75 @@ class VideoThread(QThread):
 
                 for contour in contours:
                     area = cv2.contourArea(contour)
-                    if 10 <= area <= 150:  # modified area thresholds
+                    if 6 <= area <= 150:
+                        perimeter = cv2.arcLength(contour, True)
+                        if perimeter > 0:
+                            circularity = 4 * np.pi * area / (perimeter * perimeter)
+                            
+                            if circularity > self.min_detection_confidence:
+                                M = cv2.moments(contour)
+                                if M['m00'] > 0:
+                                    center_x = M['m10'] / M['m00']
+                                    center_y = M['m01'] / M['m00']
+                                    
+                                    if not check_min_distance((center_x, center_y), previous_centers):
+                                        continue
+                                    
+                                    previous_centers.append((center_x, center_y))
+                                    
+                                    in_bottom_rect = (x_fixed <= center_x <= x_fixed + box_width) and \
+                                                   (y_fixed <= center_y <= y_fixed + box_height)
+                                    
+                                    top_rect_y_start = corners_ordered[0][1] - gap - rect_height
+                                    top_rect_y_end = corners_ordered[0][1] - gap
+                                    in_top_rect = (x_fixed <= center_x <= x_fixed + box_width) and \
+                                                (top_rect_y_start <= center_y <= top_rect_y_end)
+
+                                    if in_bottom_rect:
+                                        is_pickable = is_left_side(center_x, center_y)
+                                        object_info = ("Circle", center_x, center_y, is_pickable, "bottom")
+                                        detected_objects.append(object_info)
+                                        if is_pickable:
+                                            pickable_objects_bottom.append(object_info)
+                                    elif in_top_rect:
+                                        is_pickable = is_top_half(center_x, center_y, left_mid_x, left_mid_y, 
+                                                                right_mid_x, right_mid_y)
+                                        object_info = ("Circle", center_x, center_y, is_pickable, "top")
+                                        detected_objects.append(object_info)
+                                        if is_pickable:
+                                            pickable_objects_top.append(object_info)
+
+                                    current_pos = (center_x, center_y)
+                                    self.position_buffer.append(current_pos)
+                                    if len(self.position_buffer) > self.frame_buffer_size:
+                                        self.position_buffer.pop(0)
+                                    
+                                    filtered_positions = self.filter_outliers(self.position_buffer)
+                                    if filtered_positions:
+                                        smoothed_pos = self.apply_moving_average(filtered_positions)
+                                        if self.is_position_stable(smoothed_pos, self.last_valid_position):
+                                            self.stable_count += 1
+                                        else:
+                                            self.stable_count = 0
+                                        
+                                        if self.stable_count >= self.min_stable_frames:
+                                            self.last_valid_position = smoothed_pos
+                                            center_x, center_y = smoothed_pos
+
+                # baskets detection - use original detect_basket method
+                detected_object_positions = [(x, y) for _, x, y, _, _ in detected_objects]
+                basket_infos = self.basket_detector.detect_basket(hsv_img, x_fixed, box_width, box_height, y_fixed)
+
+                def check_min_distance(center, previous_centers, min_distance=3):  # Changed min_distance to 20
+                    for prev_center in previous_centers:
+                        dist = np.sqrt((center[0] - prev_center[0])**2 + (center[1] - prev_center[1])**2)
+                        if dist < min_distance:
+                            return False
+                    return True
+
+                for contour in contours:
+                    area = cv2.contourArea(contour)
+                    if 6 <= area <= 150:  # modified area thresholds to 6-150
                         perimeter = cv2.arcLength(contour, True)
                         if perimeter > 0:
                             circularity = 4 * np.pi * area / (perimeter * perimeter)
@@ -495,7 +559,7 @@ class VideoThread(QThread):
                                             self.last_valid_position = smoothed_pos
                                             center_x, center_y = smoothed_pos
 
-                # baskets detection
+                # baskets detection - use basket_mask instead of recreating it
                 detected_object_positions = [(x, y) for _, x, y, _, _ in detected_objects]
                 basket_infos = self.basket_detector.detect_basket(hsv_img, x_fixed, box_width, box_height, y_fixed)
                 if basket_infos:  # If any baskets were detected
@@ -611,7 +675,7 @@ class VideoThread(QThread):
                     draw_y = int(target_y)
                     
                     # Draw basic circle for all objects
-                    cv2.circle(cv_img, (draw_x, draw_y), 3, color, -1)
+                    cv2.circle(cv_img, (draw_x, draw_y), 1, color, -1)
                     
                     # Only draw detailed information for first priority objects
                     if obj == first_priority_bottom or obj == first_priority_top:
@@ -655,11 +719,14 @@ class VideoThread(QThread):
                 grid_pos = self.basket_detector.get_grid_position_by_id(cv_img, basket_infos, self.current_target_id)
                 if grid_pos:
                     tar_x, tar_y = CoordinateConverter.to_robot_coordinates(
-                        grid_pos[0], grid_pos[1], x_fixed, y_fixed, box_width, box_height
+                        grid_pos[0], grid_pos[1], 
+                        x_fixed, y_fixed, 
+                        box_width, box_height,
+                        use_raw=self.use_raw_coordinates,
+                        use_interpolation=self.use_interpolation  # Pass the interpolation setting
                     )
                     self.grid_position_signal.emit(tar_x, tar_y)
                     self.current_target_id = None  # Reset after emitting
-
             # After detecting objects, update available positions
             # Store positions in buffer for averaging
             if detected_objects:
