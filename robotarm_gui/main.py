@@ -4,7 +4,7 @@ import time
 app = QtWidgets.QApplication(sys.argv)
 MainWindow = QtWidgets.QMainWindow()
 # from ros_gui import Ui_MainWindow
-from ros_gui_3 import Ui_MainWindow
+from ros_gui_4 import Ui_MainWindow
 from serial import Serial
 from time import sleep, ctime
 from PyQt5.QtGui import QPixmap
@@ -220,8 +220,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.tar_x = target_x
         self.tar_y = target_y
         # Display the values in millimeters (multiply by 1000 for display only)
-        self.Vision_X.setText(f"{target_x:.3f}")
-        self.Vision_Y.setText(f"{target_y:.3f}")
+        # self.Vision_X.setText(f"{target_x:.3f}")
+        # self.Vision_Y.setText(f"{target_y:.3f}")
         self.object_queue.put((target_x, target_y))
             
     def is_operation_running(self):
@@ -293,8 +293,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.tar_x = x
         self.tar_y = y
         # Display the values in millimeters (multiply by 1000 for display only)
-        self.Vision_X.setText(f"{x * 1000:.3f}")
-        self.Vision_Y.setText(f"{y * 1000:.3f}")
+        # self.Vision_X.setText(f"{x * 1000:.3f}")
+        # self.Vision_Y.setText(f"{y * 1000:.3f}")
         self.start_move_thread("move")  # Start movement to target position
         
     def move_to_grid_position(self):
@@ -395,8 +395,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             if middle_coords:
                 self.tar_x = robot_x
                 self.tar_y = robot_y
-                self.Vision_X.setText(f"{robot_x:.3f}")
-                self.Vision_Y.setText(f"{robot_y:.3f}")
+                # self.Vision_X.setText(f"{robot_x:.3f}")
+                # self.Vision_Y.setText(f"{robot_y:.3f}")
                 dest_x, dest_y = CoordinateConverter.to_robot_coordinates(
                     middle_coords[0], middle_coords[1],
                     self.workspace_bounds['x_fixed'],
@@ -443,8 +443,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                 )
                 self.tar_x = robot_x
                 self.tar_y = robot_y
-                self.Vision_X.setText(f"{robot_x:.3f}")
-                self.Vision_Y.setText(f"{robot_y:.3f}")
+                # self.Vision_X.setText(f"{robot_x:.3f}")
+                # self.Vision_Y.setText(f"{robot_y:.3f}")
                 
                 if destination:  # If grid destination selected
                     self.grid_target = destination[1]
