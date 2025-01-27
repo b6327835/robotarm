@@ -10,9 +10,9 @@ class BasketDetector:
             'low_s': 60, 'high_s': 255,
             'low_v': 100, 'high_v': 255,
             'min_area': 400,  # Reduced to detect inner area
-            'kernel_size': 1,
-            'erosion_iter': 1,  # Added erosion to focus on inner lines
-            'dilation_iter': 0  # Removed dilation to prevent expanding
+            'kernel_size': 3,
+            'erosion_iter': 0,  # Added erosion to focus on inner lines
+            'dilation_iter': 1  # Removed dilation to prevent expanding
         }
         self.occupied_cells = {}  # Track occupied grid cells
 
@@ -31,6 +31,8 @@ class BasketDetector:
         # Apply morphological operations
         kernel = np.ones((self.params['kernel_size'], self.params['kernel_size']), np.uint8)
         red_mask = cv2.erode(red_mask, kernel, iterations=self.params['erosion_iter'])
+        if self.params['dilation_iter'] > 0:
+            red_mask = cv2.dilate(red_mask, kernel, iterations=self.params['dilation_iter'])
 
         # Find red basket contours
         red_contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
