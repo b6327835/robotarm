@@ -42,7 +42,7 @@
      <string notr="true">background-color: rgb(255, 170, 127);</string>
     </property>
     <property name="currentIndex">
-     <number>3</number>
+     <number>1</number>
     </property>
     <widget class="QWidget" name="manpage">
      <widget class="QSlider" name="ypos_slider">
@@ -505,7 +505,7 @@
       <property name="geometry">
        <rect>
         <x>690</x>
-        <y>470</y>
+        <y>400</y>
         <width>151</width>
         <height>61</height>
        </rect>
@@ -603,7 +603,7 @@
        <string notr="true">background-color: rgb(255, 170, 0);</string>
       </property>
       <property name="text">
-       <string>Auto(WIP)</string>
+       <string>Auto</string>
       </property>
      </widget>
      <widget class="QPushButton" name="moveto_bt">
@@ -649,6 +649,27 @@
       </property>
       <property name="alignment">
        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="initial_bt">
+      <property name="geometry">
+       <rect>
+        <x>690</x>
+        <y>470</y>
+        <width>151</width>
+        <height>61</height>
+       </rect>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>14</pointsize>
+       </font>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">background-color: rgb(255, 170, 0);</string>
+      </property>
+      <property name="text">
+       <string>Initial</string>
       </property>
      </widget>
     </widget>
@@ -1944,6 +1965,27 @@
      <string>Control</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="auto_bt_2">
+    <property name="geometry">
+     <rect>
+      <x>1020</x>
+      <y>530</y>
+      <width>71</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="font">
+     <font>
+      <pointsize>14</pointsize>
+     </font>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(255, 170, 0);</string>
+    </property>
+    <property name="text">
+     <string>Auto2</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -1951,7 +1993,7 @@
      <x>0</x>
      <y>0</y>
      <width>1100</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>
