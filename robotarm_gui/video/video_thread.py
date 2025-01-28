@@ -187,12 +187,18 @@ class VideoThread(QThread):
         return filtered
 
     def run(self):
+        # Clear buffers at initialization
+        self.basket_info_buffer = []
+        
         # Initialize buffers for various measurements
         target_buffer = []
         depth_buffer = []
         corners_buffer = []
         
         while True:
+            # Clear basket info buffer at start of each frame
+            basket_infos = None
+            
             # Initialize target variables at start of loop
             target_x = None
             target_y = None
@@ -763,18 +769,6 @@ class VideoThread(QThread):
 
             # Emit the averaged positions
             self.available_positions_signal.emit(self.available_positions)
-
-            # After basket detection but before emitting available_positions
-            if basket_infos:
-                self.basket_info_buffer.append(basket_infos)
-                if len(self.basket_info_buffer) > self.frame_buffer_size:
-                    self.basket_info_buffer.pop(0)
-                
-                avg_basket_infos = self.average_basket_info(self.basket_info_buffer)
-                if avg_basket_infos:
-                    grid_positions = BasketDetector.draw_basket_grid(cv_img, avg_basket_infos, detected_object_positions)
-                    if grid_positions:
-                        self.available_positions['grid'] = grid_positions
 
             # Remove the position averaging for object list
             # We'll keep all detected objects instead of averaging them

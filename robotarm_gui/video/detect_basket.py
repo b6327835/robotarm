@@ -15,8 +15,12 @@ class BasketDetector:
             'dilation_iter': 1
         }
         self.occupied_cells = {}  # Track occupied grid cells
+        self.basket_infos = []  # Store last detected basket information
 
     def detect_basket(self, hsv_img, x_fixed, box_width, box_height, y_fixed):
+        # Add minimum distance between baskets
+        MIN_BASKET_DISTANCE = 5  # pixels
+        
         # Create red mask using two HSV ranges
         red_mask1 = cv2.inRange(hsv_img, 
             np.array([self.params['low_h1'], self.params['low_s'], self.params['low_v']]),
@@ -39,7 +43,8 @@ class BasketDetector:
         # Find red basket contours
         red_contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        basket_infos = []  # Changed to list to store multiple baskets
+        basket_infos = []
+        detected_centers = []  # Track detected basket centers
         
         for contour in red_contours:
             area = cv2.contourArea(contour)
@@ -50,19 +55,32 @@ class BasketDetector:
                 
                 (center_x, center_y), (width, height), angle = rect
                 
-                # Adjust dimensions to target inner area
-                inner_margin = 10  # pixels to shrink from outer edge
-                if width < height:
-                    width, height = height - inner_margin, width - inner_margin
-                    angle += 90
-                else:
-                    width, height = width - inner_margin, height - inner_margin
-                grid_angle = -angle
-
-                # Check if basket is in bottom rectangle
+                # Check if new basket is too close to already detected ones
+                too_close = False
+                for existing_center in detected_centers:
+                    dist = np.sqrt((center_x - existing_center[0])**2 + 
+                                 (center_y - existing_center[1])**2)
+                    if dist < MIN_BASKET_DISTANCE:
+                        too_close = True
+                        break
+                
+                if too_close:
+                    continue
+                
+                # Rest of basket detection logic
                 if (x_fixed <= center_x <= x_fixed + box_width and 
                     y_fixed <= center_y <= y_fixed + box_height):
                     
+                    detected_centers.append((center_x, center_y))
+                    
+                    inner_margin = 10
+                    if width < height:
+                        width, height = height - inner_margin, width - inner_margin
+                        angle += 90
+                    else:
+                        width, height = width - inner_margin, height - inner_margin
+                    grid_angle = -angle
+
                     basket_info = {
                         'box': box,
                         'center': (center_x, center_y),
@@ -73,9 +91,11 @@ class BasketDetector:
                             'cols': 4
                         }
                     }
-                    basket_infos.append(basket_info)  # Append instead of break
+                    basket_infos.append(basket_info)
 
-        return basket_infos  # Return list of all baskets
+        # Store the detected baskets before returning
+        self.basket_infos = basket_infos
+        return basket_infos
 
     @staticmethod
     def check_cell_occupied(point, detected_objects, threshold=10):
@@ -350,3 +370,43 @@ class BasketDetector:
                         
                         return (px, py)
         return None
+    def draw_numbered_dots(self, img, basket_info, is_right_basket, counter):
+        """Draw numbered dots for basket grid cells"""
+        center_x, center_y = basket_info['center']
+        width, height = basket_info['dimensions']
+        grid_angle = basket_info['angle']
+        grid_rows = basket_info['grid_params']['rows']
+        grid_cols = basket_info['grid_params']['cols']
+        
+        step_x = width / grid_cols
+        step_y = height / grid_rows
+        M = cv2.getRotationMatrix2D((center_x, center_y), grid_angle, 1.0)
+        
+        grid_positions = {}
+        
+        for row in range(grid_rows):
+            for col in range(grid_cols):
+                # Calculate cell position
+                x_offset = (col * step_x) - (width / 2) + (step_x / 2)
+                y_offset = (row * step_y) - (height / 2) + (step_y / 2)
+                
+                # Calculate rotated position
+                cell_x = center_x + x_offset
+                cell_y = center_y + y_offset
+                rotated_point = self.rotate_point((cell_x, cell_y), (center_x, center_y), M)
+                
+                # Generate cell ID
+                cell_num = row * grid_cols + col + 1
+                cell_id = f"{'R' if is_right_basket else 'L'}{cell_num}"
+                
+                # Store grid position
+                grid_positions[cell_id] = rotated_point
+                
+                # Draw position marker
+                cv2.circle(img, rotated_point, 2, (0, 255, 0), -1)
+                if self.show_label:
+                    cv2.putText(img, str(cell_num), 
+                            (rotated_point[0]+5, rotated_point[1]+5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
+        
+        return grid_positions

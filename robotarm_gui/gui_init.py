@@ -53,4 +53,6 @@ class GUIInitializer:
         self.xpos_current_slider.valueChanged.connect(self.update_current_position)
         self.ypos_current_slider.valueChanged.connect(self.update_current_position)
         self.zpos_current_slider.valueChanged.connect(self.update_current_position)
+        
+        self.auto_bt_2.clicked.connect(self.on_auto_bt_2_clicked)
 

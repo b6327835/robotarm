@@ -22,6 +22,7 @@ from auto_pnp_thread import AutoPnPThread
 from gui_init import GUIInitializer
 from jog_controls import JogControls, MoveLControls
 from utils.coordinate_converter import CoordinateConverter
+from pnp2 import PnP2Operations
 
 class PositionSelectorDialog(QDialog):
     def __init__(self, positions, workspace_bounds, parent=None):
@@ -119,7 +120,7 @@ class PositionSelectorDialog(QDialog):
         return source, destination
 
 class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
-    def __init__(self) -> None:
+    def __init__(self):
         super().setupUi(MainWindow)
         self.gnc()
         
@@ -200,6 +201,51 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         self.auto_check_timer.setInterval(10000)  # 10 seconds
 
         self.coordinate_converter = CoordinateConverter()
+
+        self.is_auto_mode2 = False
+        self.pnp2_ops = None
+
+    def is_position_safe(self, x, y, existing_objects):
+        """Check if a position is safe considering all existing objects"""
+        min_distance = 30  # minimum distance in millimeters
+        for obj in existing_objects:
+            if isinstance(obj, tuple) and len(obj) == 2:
+                obj_x, obj_y = obj
+                dist = np.sqrt((x - obj_x)**2 + (y - obj_y)**2)
+                if dist < min_distance/1000.0:  # Convert mm to meters
+                    return False
+        return True
+
+    def find_safe_placement_position(self, start_x, start_y):
+        """Find next safe position for object placement considering existing objects"""
+        current_y = start_y
+        
+        # Consider both initial top objects and newly placed objects
+        all_top_objects = []
+        if hasattr(self, 'initial_top_objects'):
+            all_top_objects.extend([
+                self.coordinate_converter.to_robot_coordinates(
+                    x, y,
+                    self.workspace_bounds['x_fixed'],
+                    self.workspace_bounds['y_fixed'],
+                    self.workspace_bounds['box_width'],
+                    self.workspace_bounds['box_height']
+                ) for x, y in self.initial_top_objects
+            ])
+        all_top_objects.extend(self.top_rectangle_objects)
+        
+        while current_y < start_y + 0.05:  # Limit vertical search to 50mm
+            if self.is_position_safe(start_x, current_y, all_top_objects):
+                return start_x, current_y
+            current_y += self.object_spacing/1000.0
+        return None
+
+    def count_objects_in_basket(self, basket_center):
+        """Count objects placed in a specific basket"""
+        count = 0
+        if basket_center in self.remembered_positions['basket_objects']:
+            count = len(self.remembered_positions['basket_objects'][basket_center])
+        return count
 
     def update_image(self, cv_img):
         qt_img = self.convert_cv_qt(cv_img, 640, 480)
@@ -287,6 +333,15 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         if self.is_auto_mode:
             # Schedule next pick and place operation
             QtCore.QTimer.singleShot(1000, self.auto_pick_and_place)
+        # Add check for auto2 mode completion
+        if self.is_auto_mode2 and self.pnp2_ops:
+            # Changed to use 'placed_top' instead of 'placed_objects'
+            if not self.pnp2_ops.remembered_positions['objects'] and not self.pnp2_ops.remembered_positions['placed_top']:
+                self.start_move_thread("home")
+                self.is_auto_mode2 = False
+                self.auto_bt_2.setText("Auto 2")
+            else:
+                QtCore.QTimer.singleShot(1000, self.process_next_auto2_step)
 
     def handle_grid_position(self, x, y):
         """Handle grid position signal from video thread"""
@@ -326,21 +381,18 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         
         x_fixed = self.workspace_bounds['x_fixed']
         y_fixed = self.workspace_bounds['y_fixed']
+        box_width = self.workspace_bounds['box_width']
         box_height = self.workspace_bounds['box_height']
         
-        # Center X (ensure within 0-300mm)
-        center_x = min(max(x_fixed + (box_height / 2), 0), 300)
+        # Start X from left side (1/4 of the width)
+        start_x = x_fixed + (box_width * 0.25)  # 25% from left edge
         
-        # Calculate bottom half middle of top rectangle:
-        # y_fixed marks bottom of top rectangle
-        # Move up by gap (50mm)
-        # Top half point = y_fixed - gap - (box_height/2)
-        # Bottom half middle = top half point + (box_height/4)
-        center_y = min(max(
+        # Calculate bottom half middle of top rectangle
+        start_y = min(max(
             y_fixed - 10 - (box_height/2) + (box_height/4), 
             0), 200)
                 
-        return center_x, center_y
+        return start_x, start_y
 
     def auto_pick_and_place(self):
         """Auto pick and place logic"""
@@ -455,6 +507,48 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                 self.grid_target = destination[1]
                 self.thread.set_grid_target(destination[1])
 
+    def on_auto_bt_2_clicked(self):
+        if not self.is_auto_mode2:
+            # Start auto mode 2
+            self.is_auto_mode2 = True
+            self.auto_bt_2.setText("Stop Auto 2")
+            
+            # Initialize PnP2 operations
+            self.pnp2_ops = PnP2Operations(self.thread, self.workspace_bounds)
+            if not self.pnp2_ops.start_operation():
+                print("No baskets detected")
+                self.is_auto_mode2 = False
+                self.auto_bt_2.setText("Auto 2")
+                return
+                
+            self.process_next_auto2_step()
+        else:
+            # Stop auto mode 2
+            self.is_auto_mode2 = False
+            self.auto_bt_2.setText("Auto 2")
+            self.pnp2_ops = None
+
+    def process_next_auto2_step(self):
+        """Process next step in auto2 mode"""
+        if not self.is_auto_mode2 or self.is_operation_running():
+            return
+
+        next_op = self.pnp2_ops.get_next_operation()
+        if next_op:
+            source_x, source_y, dest_x, dest_y = next_op
+            self.tar_x = source_x
+            self.tar_y = source_y
+            self.start_move_thread("pnp2", dest_x=dest_x, dest_y=dest_y)
+        else:
+            # Check if operation is complete
+            if self.pnp2_ops.stage_sequence[self.pnp2_ops.current_stage_index] == 'complete':
+                self.start_move_thread("home")
+                self.is_auto_mode2 = False
+                self.auto_bt_2.setText("Auto 2")
+            else:
+                # Continue to next stage
+                QtCore.QTimer.singleShot(1000, self.process_next_auto2_step)
+                
 if __name__ == "__main__":
     myobj = myclass()
     MainWindow.show()
