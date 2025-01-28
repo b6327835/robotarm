@@ -21,7 +21,7 @@ const int Z_STEP_PIN = 27;
 const int Z_DIR_PIN = 19;
 
 const int PIN_LIMIT_X = 21;
-const int PIN_LIMIT_Y = 22;
+const int PIN_LIMIT_Y = 4;
 const int PIN_LIMIT_Z = 23;
 
 const int LED_PIN = 2;  // Update this to match your LED pin
