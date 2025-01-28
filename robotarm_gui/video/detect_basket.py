@@ -6,13 +6,13 @@ class BasketDetector:
         # Red basket detection parameters
         self.params = {
             'low_h1': 0, 'high_h1': 10,
-            'low_h2': 160, 'high_h2': 180,
-            'low_s': 60, 'high_s': 255,
-            'low_v': 100, 'high_v': 255,
-            'min_area': 400,  # Reduced to detect inner area
-            'kernel_size': 3,
-            'erosion_iter': 0,  # Added erosion to focus on inner lines
-            'dilation_iter': 1  # Removed dilation to prevent expanding
+            'low_h2': 170, 'high_h2': 180,
+            'low_s': 18, 'high_s': 255,
+            'low_v': 150, 'high_v': 255,
+            'min_area': 2500,
+            'kernel_size': 1,
+            'erosion_iter': 1, 
+            'dilation_iter': 1
         }
         self.occupied_cells = {}  # Track occupied grid cells
 
@@ -29,8 +29,10 @@ class BasketDetector:
         red_mask = cv2.bitwise_or(red_mask1, red_mask2)
 
         # Apply morphological operations
-        kernel = np.ones((self.params['kernel_size'], self.params['kernel_size']), np.uint8)
-        red_mask = cv2.erode(red_mask, kernel, iterations=self.params['erosion_iter'])
+        if self.params['kernel_size'] > 0:
+            kernel = np.ones((self.params['kernel_size'], self.params['kernel_size']), np.uint8)
+        if self.params['erosion_iter'] > 0:
+            red_mask = cv2.erode(red_mask, kernel, iterations=self.params['erosion_iter'])
         if self.params['dilation_iter'] > 0:
             red_mask = cv2.dilate(red_mask, kernel, iterations=self.params['dilation_iter'])
 
