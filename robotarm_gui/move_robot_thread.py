@@ -9,8 +9,8 @@ class MoveRobotThread(QThread):
     def __init__(self, x, y, z, mode, parent=None, dest_x=0.0, dest_y=0.0):
         super().__init__(parent)
         # Remove the *100 multiplication since values are already in correct scale
-        self.offsetx = 2.135
-        self.offsety = 2.127
+        self.offsetx = 0
+        self.offsety = 0
         self.x = x + self.offsetx
         self.y = y + self.offsety
         self.z = z
@@ -19,7 +19,7 @@ class MoveRobotThread(QThread):
         self.mode = mode
         self.serial_port = None
         self.z_top = 170
-        self.z_bottom = 152
+        self.z_bottom = 148
 
     def _connect_serial(self):
         """Only connect if no existing connection"""
@@ -59,7 +59,7 @@ class MoveRobotThread(QThread):
                 
                 # Test communication
                 self.serial_port.write(b"test\n")
-                time.sleep(0.5)
+                time.sleep(0.2)
                 
                 if self.serial_port.in_waiting:
                     response = self.serial_port.readline().decode().strip()
@@ -103,7 +103,7 @@ class MoveRobotThread(QThread):
                         return True
                     # Parse other responses
                     self._parse_response(response)
-                time.sleep(0.05)
+                time.sleep(0.07)
             except Exception as e:
                 print(f"[SERIAL ERROR] {str(e)}")
                 self.movement_status.emit(f"Error reading response: {str(e)}")
@@ -153,7 +153,7 @@ class MoveRobotThread(QThread):
             
             # Wait before retry
             if attempt < max_retries - 1:
-                time.sleep(1)
+                time.sleep(0.5)
         
         return False
 
@@ -177,7 +177,7 @@ class MoveRobotThread(QThread):
             
             if attempt < max_attempts - 1:
                 self.movement_status.emit(f"Retrying movement in 1 second... (Attempt {attempt + 1}/{max_attempts})")
-                time.sleep(1)
+                time.sleep(0.5)
         
         self.movement_status.emit(f"Failed to execute movement after {max_attempts} attempts")
         return False
