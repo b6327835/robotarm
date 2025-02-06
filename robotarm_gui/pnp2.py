@@ -2,7 +2,7 @@ import numpy as np
 from utils.coordinate_converter import CoordinateConverter
 
 class PnP2Operations:
-    def __init__(self, video_thread, workspace_bounds):
+    def __init__(self, video_thread, workspace_bounds, fixed_basket_position=True):
         self.video_thread = video_thread
         self.workspace_bounds = workspace_bounds
         self.remembered_positions = {
@@ -16,10 +16,17 @@ class PnP2Operations:
             'occupied_cells': set(),
             'grid_positions': {}  # Add grid positions tracking
         }
-        self.stage_sequence = ['move_to_top', 'fill_baskets', 'move_baskets', 'complete']
+        self.stage_sequence = ['move_to_top', 'fill_baskets', 'move_baskets', 'check_left_cells', 'complete']
         self.current_stage_index = 0
         self.object_spacing = 15  # 15mm spacing between objects
         self.basket_cell_capacity = 12  # Maximum cells per basket
+        self.fixed_basket_position = fixed_basket_position
+        self.left_cells_checked = False
+        self.objects_per_row = 6  # Number of objects per row
+        self.current_row = 0  # Track current row
+        self.objects_placed = 0  # Track total objects placed
+        self.row_spacing = 15  # X spacing between rows in mm
+        self.base_x = None  # Store initial x position
 
     def start_operation(self):
         """Initialize operation by capturing current positions"""
@@ -67,7 +74,7 @@ class PnP2Operations:
 
     def find_next_safe_position(self, base_x):
         """Find next safe position in top area"""
-        current_y = self.workspace_bounds['y_fixed'] - 60  # Initial Y position
+        current_y = self.workspace_bounds['y_fixed'] - 40  # Initial Y position
         
         while current_y > self.workspace_bounds['y_fixed'] - self.workspace_bounds['box_height']/2:
             if self.is_position_safe(float(base_x), float(current_y)):  # Ensure values are float
@@ -85,17 +92,16 @@ class PnP2Operations:
             return self._handle_fill_baskets()
         elif current_stage == 'move_baskets':
             return self._handle_move_baskets()
+        elif current_stage == 'check_left_cells':
+            return self._handle_check_left_cells()
         elif current_stage == 'complete':
             return None
             
         return None
 
     def _handle_move_to_top(self):
-        """Handle moving objects to top area"""
-        # Store grid positions when starting this stage
         if not self.remembered_positions['grid_positions']:
             self.remembered_positions['grid_positions'] = self.video_thread.available_positions.get('grid', {})
-            # Update occupied cells from grid positions
             for grid_id in self.remembered_positions['grid_positions']:
                 if grid_id.startswith('occupied_'):
                     original_id = grid_id.replace('occupied_', '')
@@ -105,14 +111,21 @@ class PnP2Operations:
             self.current_stage_index += 1
             return None
 
-        # Rest of move_to_top logic remains the same
         obj_x, obj_y = self.remembered_positions['objects'][0]
-        next_pos = self.find_next_safe_position(obj_x)
-        if not next_pos:
-            self.current_stage_index += 1
-            return None
+        
+        # Store initial x position for first object
+        if self.base_x is None:
+            self.base_x = self.workspace_bounds['x_fixed'] + 10
+            
+        # Calculate position based on current object count
+        current_row = self.objects_placed // self.objects_per_row  # Which row we're on
+        current_col = self.objects_placed % self.objects_per_row   # Which column in the row
+        
+        # Calculate destination coordinates
+        dest_cam_x = self.base_x + (current_col * 20)  # 20mm spacing between objects in row
+        dest_cam_y = (self.workspace_bounds['y_fixed'] - 40) - (current_row * 20)  # 20mm spacing between rows
 
-        dest_cam_x, dest_cam_y = next_pos
+        # Convert coordinates
         dest_x, dest_y = CoordinateConverter.to_robot_coordinates(
             dest_cam_x, dest_cam_y,
             self.workspace_bounds['x_fixed'],
@@ -129,7 +142,7 @@ class PnP2Operations:
             self.workspace_bounds['box_height']
         )
 
-        # Update remembered positions
+        # Update tracking
         self.remembered_positions['objects'].pop(0)
         self.remembered_positions['placed_top'].append({
             'camera': (dest_cam_x, dest_cam_y),
@@ -137,6 +150,7 @@ class PnP2Operations:
             'original': (obj_x, obj_y)
         })
 
+        self.objects_placed += 1
         return source_x, source_y, dest_x, dest_y
 
     def _handle_fill_baskets(self):
@@ -198,7 +212,10 @@ class PnP2Operations:
     def _handle_move_baskets(self):
         """Handle moving left baskets to right side"""
         if not self._can_move_baskets():
-            self.current_stage_index += 1
+            if not self.left_cells_checked:
+                self.current_stage_index += 1  # Move to check_left_cells stage
+            else:
+                self.current_stage_index = 1  # Return to fill_baskets stage
             return None
 
         # Get next basket to move
@@ -222,16 +239,43 @@ class PnP2Operations:
                 self.workspace_bounds['box_height']
             )
 
+            # Create new basket info for the target position
+            new_basket = {
+                'center': target_position,
+                'dimensions': source_basket['dimensions'],
+                'angle': source_basket['angle'],
+                'grid_params': source_basket['grid_params'],
+                'cells': []  # Initialize empty cells list
+            }
+
+            # Wait for video thread to update grid positions
+            # This will be used in the next cycle of fill_baskets
+            self.remembered_positions['grid_positions'] = {}  # Clear existing grid positions
+            
             # Update basket positions
             self.remembered_positions['baskets']['left'].pop(0)
-            self.remembered_positions['baskets']['right'].append({
-                'center': target_position,
-                'cells': []
-            })
+            self.remembered_positions['baskets']['right'].append(new_basket)
+
+            # Clear any existing occupied cells for this basket's position
+            old_cells = [cell_id for cell_id in self.remembered_positions['occupied_cells']
+                        if cell_id.startswith('R')]  # Only clear right side cells
+            for cell_id in old_cells:
+                self.remembered_positions['occupied_cells'].remove(cell_id)
             
             return source_x, source_y, dest_x, dest_y
 
         self.current_stage_index += 1
+        return None
+
+    def _handle_check_left_cells(self):
+        """Handle checking left basket cells after moving basket"""
+        # Update grid positions from video thread
+        new_grid_positions = self.video_thread.available_positions.get('grid', {})
+        self.remembered_positions['grid_positions'].update(new_grid_positions)
+        
+        self.left_cells_checked = True
+        # After checking, return to fill_baskets stage
+        self.current_stage_index = 1  # Go back to fill_baskets stage
         return None
 
     def _get_next_basket_cell(self, basket, filled_count):
@@ -261,6 +305,13 @@ class PnP2Operations:
 
     def _find_right_side_space(self):
         """Find available space on right side for a basket"""
+        if self.fixed_basket_position:
+            # Always return the center of right side
+            right_x = self.workspace_bounds['x_fixed'] + self.workspace_bounds['box_width'] * 0.75
+            right_y = self.workspace_bounds['y_fixed'] + self.workspace_bounds['box_height'] * 0.5
+            return (right_x, right_y)
+        
+        # Original dynamic positioning logic
         right_x = self.workspace_bounds['x_fixed'] + self.workspace_bounds['box_width'] * 0.75
         right_y = self.workspace_bounds['y_fixed'] + self.workspace_bounds['box_height'] * 0.25
         
