@@ -1,9 +1,9 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 import cv2
 import numpy as np
-from aruco_markers_detect import ArucoMarkerPosition
+from video.aruco_markers_detect import ArucoMarkerPosition
 import pyrealsense2 as rs
-from color_detection import ColorDetector
+from video.color_detection import ColorDetector
 import pickle
 import os
 from video.detect_basket import BasketDetector
@@ -47,7 +47,7 @@ class VideoThread(QThread):
             self.align = rs.align(rs.stream.color)
         else:
             #webcam initialization
-            for index in range(2):
+            for index in range(5):
                 print(f"Attempting to open camera index {index}")
                 self.cap = cv2.VideoCapture(index)
                 if self.cap.isOpened():
@@ -70,7 +70,7 @@ class VideoThread(QThread):
         self.camera_matrix = None
         self.dist_coeffs = None
         if self.use_calibration:  # Only load calibration if flag is True
-            calibration_file = '../../../calibration/realsense_calibration.pkl' if use_realsense else '../../../calibration/camera_calibration.pkl'
+            calibration_file = r'robotarm_gui/cal_points/realsense_calibration.pkl' if use_realsense else r'robotarm_gui/cal_points/camera_calibration.pkl'
             
             if os.path.exists(calibration_file):
                 with open(calibration_file, 'rb') as f:

@@ -4,7 +4,7 @@ import time
 app = QtWidgets.QApplication(sys.argv)
 MainWindow = QtWidgets.QMainWindow()
 # from ros_gui import Ui_MainWindow
-from ros_gui_4 import Ui_MainWindow
+from gui.ros_gui_4 import Ui_MainWindow
 from serial import Serial
 from time import sleep, ctime
 from PyQt5.QtGui import QPixmap
@@ -15,14 +15,14 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from threading import Thread
-from move_robot_thread import MoveRobotThread
+from controls.move_robot_thread import MoveRobotThread
 from video.video_thread import VideoThread
 import queue
-from auto_pnp_thread import AutoPnPThread
-from gui_init import GUIInitializer
-from jog_controls import JogControls, MoveLControls
+from controls.auto_pnp_thread import AutoPnPThread
+from gui.gui_init import GUIInitializer
+from controls.jog_controls import JogControls, MoveLControls
 from utils.coordinate_converter import CoordinateConverter
-from pnp2 import PnP2Operations
+from controls.pnp2 import PnP2Operations
 
 class PositionSelectorDialog(QDialog):
     def __init__(self, positions, workspace_bounds, parent=None):
@@ -126,7 +126,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         
         # Initialize video thread
         self.thread = VideoThread(
-            use_realsense=True,
+            use_realsense=False,
             use_calibration=False,
             use_raw_coordinates=False,
             use_interpolation=True
