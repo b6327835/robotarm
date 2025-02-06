@@ -9,8 +9,8 @@ class MoveRobotThread(QThread):
     def __init__(self, x, y, z, mode, parent=None, dest_x=0.0, dest_y=0.0):
         super().__init__(parent)
         # Remove the *100 multiplication since values are already in correct scale
-        self.offsetx = 0
-        self.offsety = 0
+        self.offsetx = 0.1
+        self.offsety = -0.2
         self.x = x + self.offsetx
         self.y = y + self.offsety
         self.z = z
@@ -18,8 +18,8 @@ class MoveRobotThread(QThread):
         self.dest_y = dest_y
         self.mode = mode
         self.serial_port = None
-        self.z_top = 170
-        self.z_bottom = 148
+        self.z_top = 169.5
+        self.z_bottom = 142
 
     def _connect_serial(self):
         """Only connect if no existing connection"""
@@ -222,16 +222,16 @@ class MoveRobotThread(QThread):
                     return
                 if not self._execute_movement([pnp_x, pnp_y, pick_z], vacuum=1, description="Picking"):
                     return
-                if not self._execute_movement([pnp_x, pnp_y, pick_z], vacuum=0, description="Picking"):
-                    return
+                # if not self._execute_movement([pnp_x, pnp_y, pick_z], vacuum=0, description="Picking"):
+                #     return
                 # Lift with item
-                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Lifting"):
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=1, description="Lifting"):
                     return
                 # Move to placement position
-                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Moving to placement"):
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=1, description="Moving to placement"):
                     return
                 # Place with vacuum release
-                if not self._execute_movement([self.dest_x, self.dest_y, place_z], vacuum=0, description="move z"):
+                if not self._execute_movement([self.dest_x, self.dest_y, place_z], vacuum=1, description="move z"):
                     return
                 if not self._execute_movement([self.dest_x, self.dest_y, place_z], vacuum=2, description="Placing object"):
                     return
@@ -319,6 +319,38 @@ class MoveRobotThread(QThread):
                     return False
                 return True
 
+            def pick_basket():
+                """Handle basket pick and place with fixed Z height"""
+                pnp_x = self.x
+                pnp_y = self.y
+                basket_z = 199.99  # Fixed Z height for basket operations
+                
+                # Approach position from above
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Approaching basket"):
+                    return False
+                # Lower to pick height
+                if not self._execute_movement([pnp_x, pnp_y, basket_z], vacuum=0, description="Lowering to basket"):
+                    return False
+                # Pick with vacuum
+                if not self._execute_movement([pnp_x, pnp_y, basket_z], vacuum=1, description="Picking basket"):
+                    return False
+                # Lift basket
+                if not self._execute_movement([pnp_x, pnp_y, 0.0], vacuum=0, description="Lifting basket"):
+                    return False
+                # Move to placement position
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Moving basket"):
+                    return False
+                # Lower to place
+                if not self._execute_movement([self.dest_x, self.dest_y, basket_z], vacuum=0, description="Lowering basket"):
+                    return False
+                # Release basket
+                if not self._execute_movement([self.dest_x, self.dest_y, basket_z], vacuum=2, description="Releasing basket"):
+                    return False
+                # Lift after placing
+                if not self._execute_movement([self.dest_x, self.dest_y, 0.0], vacuum=0, description="Lifting"):
+                    return False
+                return True
+
             # Execute requested movement mode
             movement_functions = {
                 "move": move,
@@ -327,7 +359,8 @@ class MoveRobotThread(QThread):
                 "home": home,
                 "init": initial,
                 "auto_pnp": auto_pnp,
-                "pnp2": pnp2  # Add new movement mode
+                "pnp2": pnp2,  # Add new movement mode
+                "pick_basket": pick_basket,  # Add pick_basket to movement functions dictionary
             }
             
             print(f"Starting movement in mode: {self.mode}")
