@@ -427,8 +427,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             if available_cell:
                 self.tar_x = robot_x
                 self.tar_y = robot_y
-                self.Vision_X.setText(f"{robot_x:.3f}")
-                self.Vision_Y.setText(f"{robot_y:.3f}")
+                # self.Vision_X.setText(f"{robot_x:.3f}")
+                # self.Vision_Y.setText(f"{robot_y:.3f}")
                 self.start_move_thread("pnp", dest_id=available_cell)
                 
         elif bottom_objects:
@@ -513,8 +513,12 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             self.is_auto_mode2 = True
             self.auto_bt_2.setText("Stop Auto 2")
             
-            # Initialize PnP2 operations
-            self.pnp2_ops = PnP2Operations(self.thread, self.workspace_bounds)
+            # Initialize PnP2 operations with fixed basket position
+            self.pnp2_ops = PnP2Operations(
+                self.thread, 
+                self.workspace_bounds,
+                fixed_basket_position=True  # Add this parameter
+            )
             if not self.pnp2_ops.start_operation():
                 print("No baskets detected")
                 self.is_auto_mode2 = False
@@ -538,10 +542,18 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             source_x, source_y, dest_x, dest_y = next_op
             self.tar_x = source_x
             self.tar_y = source_y
-            self.start_move_thread("pnp2", dest_x=dest_x, dest_y=dest_y)
+            self.tar_z = 199.99  # Set z-height to 200mm for basket operations
+            # Use pick_basket mode instead of pnp2 for basket operations
+            if self.pnp2_ops.stage_sequence[self.pnp2_ops.current_stage_index] == 'move_baskets':
+                self.start_move_thread("pick_basket", dest_x=dest_x, dest_y=dest_y)
+            else:
+                self.start_move_thread("pnp2", dest_x=dest_x, dest_y=dest_y)
         else:
-            # Check if operation is complete
-            if self.pnp2_ops.stage_sequence[self.pnp2_ops.current_stage_index] == 'complete':
+            current_stage = self.pnp2_ops.stage_sequence[self.pnp2_ops.current_stage_index]
+            if current_stage == 'check_left_cells':
+                # Move to home position before checking left cells
+                self.start_move_thread("home")
+            elif current_stage == 'complete':
                 self.start_move_thread("home")
                 self.is_auto_mode2 = False
                 self.auto_bt_2.setText("Auto 2")
