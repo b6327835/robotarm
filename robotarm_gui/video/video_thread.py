@@ -1,9 +1,9 @@
 from PyQt5.QtCore import QThread, pyqtSignal
 import cv2
 import numpy as np
-from aruco_markers_detect import ArucoMarkerPosition
+from video.aruco_markers_detect import ArucoMarkerPosition
 import pyrealsense2 as rs
-from color_detection import ColorDetector
+from video.color_detection import ColorDetector
 import pickle
 import os
 from video.detect_basket import BasketDetector
@@ -47,7 +47,7 @@ class VideoThread(QThread):
             self.align = rs.align(rs.stream.color)
         else:
             #webcam initialization
-            for index in range(2):
+            for index in range(5):
                 print(f"Attempting to open camera index {index}")
                 self.cap = cv2.VideoCapture(index)
                 if self.cap.isOpened():
@@ -70,7 +70,7 @@ class VideoThread(QThread):
         self.camera_matrix = None
         self.dist_coeffs = None
         if self.use_calibration:  # Only load calibration if flag is True
-            calibration_file = '../../../calibration/realsense_calibration.pkl' if use_realsense else '../../../calibration/camera_calibration.pkl'
+            calibration_file = r'robotarm_gui/cal_points/realsense_calibration.pkl' if use_realsense else r'robotarm_gui/cal_points/camera_calibration.pkl'
             
             if os.path.exists(calibration_file):
                 with open(calibration_file, 'rb') as f:
@@ -90,7 +90,6 @@ class VideoThread(QThread):
         self.basket_info_buffer = []
 
         # Add smoothing parameters
-        self.frame_buffer_size = 60  # Increased from previous value
         self.min_detection_confidence = 0.7  # Minimum confidence for object detection
         self.position_threshold = 5  # Pixel threshold for position changes
         self.depth_threshold = 50  # mm threshold for depth changes
@@ -311,7 +310,7 @@ class VideoThread(QThread):
                 rect_height = max(corners_ordered[2][1], corners_ordered[3][1]) - min(corners_ordered[0][1], corners_ordered[1][1])
                 
                 # Calculate extension points with actual gap
-                gap = 10  # 50-pixel gap
+                gap = 10  # 10-pixel gap
                 # First draw the original bottom rectangle
                 bottom_corners = [
                     corners_ordered[0],  # top-left
@@ -489,11 +488,11 @@ class VideoThread(QThread):
                                             self.last_valid_position = smoothed_pos
                                             center_x, center_y = smoothed_pos
 
-                # baskets detection - use original detect_basket method
+                # baskets detection - use detect_basket method
                 detected_object_positions = [(x, y) for _, x, y, _, _ in detected_objects]
                 basket_infos = self.basket_detector.detect_basket(hsv_img, x_fixed, box_width, box_height, y_fixed)
 
-                def check_min_distance(center, previous_centers, min_distance=3):  # Changed min_distance to 20
+                def check_min_distance(center, previous_centers, min_distance=3):
                     for prev_center in previous_centers:
                         dist = np.sqrt((center[0] - prev_center[0])**2 + (center[1] - prev_center[1])**2)
                         if dist < min_distance:
@@ -507,7 +506,7 @@ class VideoThread(QThread):
                         if perimeter > 0:
                             circularity = 4 * np.pi * area / (perimeter * perimeter)
                             
-                            # Increased circularity threshold for more strict detection
+                            # circularity threshold
                             if circularity > self.min_detection_confidence:
                                 M = cv2.moments(contour)
                                 if M['m00'] > 0:
@@ -771,7 +770,7 @@ class VideoThread(QThread):
             self.available_positions_signal.emit(self.available_positions)
 
             # Remove the position averaging for object list
-            # We'll keep all detected objects instead of averaging them
+            # keep all detected objects instead of averaging them
             self.available_positions_signal.emit(self.available_positions)
 
             # Only average the target position for movement

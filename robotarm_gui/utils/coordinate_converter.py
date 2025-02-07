@@ -13,7 +13,7 @@ class CoordinateConverter:
         """Load calibration points from JSON file"""
         if cls._calibration_points is None:
             try:
-                json_path = os.path.join(os.path.dirname(__file__), '..', 'calibration_points.json')
+                json_path = os.path.join(os.path.dirname(__file__), '..', 'cal_points', 'calibration_points.json')
                 with open(json_path, 'r') as f:
                     points = json.load(f)
                     # Create arrays of source (camera) and target (robot) coordinates
