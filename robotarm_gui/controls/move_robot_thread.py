@@ -8,7 +8,6 @@ class MoveRobotThread(QThread):
 
     def __init__(self, x, y, z, mode, parent=None, dest_x=0.0, dest_y=0.0):
         super().__init__(parent)
-        # Remove the *100 multiplication since values are already in correct scale
         self.offsetx = 0.1
         self.offsety = -0.2
         self.x = x + self.offsetx
@@ -170,7 +169,7 @@ class MoveRobotThread(QThread):
             self.movement_status.emit(f"{description}: {positions} (Attempt {attempt + 1})")
             
             if self._send_command(command):
-                if self._wait_for_completion(timeout=5):  # Increased timeout
+                if self._wait_for_completion(timeout=5):
                     self.movement_status.emit(f"Movement completed successfully: {command}")
                     return True
                 self.movement_status.emit("Movement timeout - no completion confirmation")
@@ -210,7 +209,7 @@ class MoveRobotThread(QThread):
             def pnp():
                 pnp_x = self.x
                 pnp_y = self.y
-                # Calculate pick and place heights separately
+                # change pick and place heights separately
                 pick_z = self.z_top if pnp_x > 169 else self.z_bottom
                 place_z = self.z_top if self.dest_x > 169 else self.z_bottom
                 
@@ -244,6 +243,7 @@ class MoveRobotThread(QThread):
                 if not self._execute_movement([0.0, 0.0, 0.0], vacuum=0, description="Returning home"):
                     return
                 print("Completed pnp movement.")
+                
             def pick():
                 if not self._execute_movement([self.x, self.y, 0.0], vacuum=0, description="Approaching pick position"):
                     return
@@ -251,8 +251,10 @@ class MoveRobotThread(QThread):
 
             def home():
                 self._execute_movement([0,0,0], vacuum=0, description="Returning home")
+                
             def initial():
                 self._execute_movement("HOME", vacuum=0, description="Initial position")
+                
             def auto_pnp():
                 # Use self.x and self.y for the object's position
                 pick_x = self.x
@@ -278,7 +280,7 @@ class MoveRobotThread(QThread):
                     return
                 print("Completed auto_pnp movement.")
 
-            # Add new pnp2 movement function
+            # pnp2 movement function
             def pnp2():
                 """Optimized pick and place without returning home between operations"""
                 pnp_x = self.x
@@ -359,8 +361,8 @@ class MoveRobotThread(QThread):
                 "home": home,
                 "init": initial,
                 "auto_pnp": auto_pnp,
-                "pnp2": pnp2,  # Add new movement mode
-                "pick_basket": pick_basket,  # Add pick_basket to movement functions dictionary
+                "pnp2": pnp2,
+                "pick_basket": pick_basket,
             }
             
             print(f"Starting movement in mode: {self.mode}")

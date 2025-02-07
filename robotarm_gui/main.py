@@ -4,7 +4,7 @@ import time
 app = QtWidgets.QApplication(sys.argv)
 MainWindow = QtWidgets.QMainWindow()
 # from ros_gui import Ui_MainWindow
-from gui.ros_gui_4 import Ui_MainWindow
+from gui.gui_4 import Ui_MainWindow
 from serial import Serial
 from time import sleep, ctime
 from PyQt5.QtGui import QPixmap
@@ -174,14 +174,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         }
         self.thread.available_positions_signal.connect(self.update_available_positions)
 
-        # Add grid initialization
-        self.grid_cols = 4  # Number of columns in the grid
-        self.grid_rows = 3  # Number of rows in the grid
-        self.placed_count = 0  # Counter for placed objects
-        self.grid_start_x = 0.0  # Starting X coordinate for grid
-        self.grid_start_y = 0.0  # Starting Y coordinate for grid
-        self.cell_size = 0.02  # Size of each grid cell in meters
-
+        #grid initialization
         self.available_positions = {
             'objects': [],
             'grid': {}
@@ -262,19 +255,16 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         return QPixmap.fromImage(p)
     def target_xy(self, target_x, target_y, z=190):
         """Handle target coordinates from video thread"""
-        # Use the target coordinates directly since they're already in robot space
+        # Use the target coordinates for movement
         self.tar_x = target_x
         self.tar_y = target_y
-        # Display the values in millimeters (multiply by 1000 for display only)
-        # self.Vision_X.setText(f"{target_x:.3f}")
-        # self.Vision_Y.setText(f"{target_y:.3f}")
         self.object_queue.put((target_x, target_y))
             
     def is_operation_running(self):
         return self.is_move_running or self.is_auto_pnp_running
 
     def update_positions(self, x, y, z):
-        # Update your sliders or other UI components
+        # Update sliders with current positions
         self.xpos_current_slider.setValue(int(x))
         self.ypos_current_slider.setValue(int(y))
         self.zpos_current_slider.setValue(int(z))
@@ -296,7 +286,6 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                     self.workspace_bounds['box_height']
                 )
             
-            # Values are in meters for the robot
             self.move_thread = MoveRobotThread(self.tar_x, self.tar_y, self.tar_z,
                                              self.move_mode, dest_x=dest_x, dest_y=dest_y)
             self.move_thread.movement_status.connect(self.handle_movement_status)
@@ -309,7 +298,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
 
     def handle_movement_status(self, status):
         print(f"Robot Status: {status}")
-        # You could also update a status label in the GUI here if desired
+        # update a status label in the GUI here
         # self.status_label.setText(status)
 
     def to_pnp(self):
@@ -335,7 +324,6 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             QtCore.QTimer.singleShot(1000, self.auto_pick_and_place)
         # Add check for auto2 mode completion
         if self.is_auto_mode2 and self.pnp2_ops:
-            # Changed to use 'placed_top' instead of 'placed_objects'
             if not self.pnp2_ops.remembered_positions['objects'] and not self.pnp2_ops.remembered_positions['placed_top']:
                 self.start_move_thread("home")
                 self.is_auto_mode2 = False
@@ -347,9 +335,6 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         """Handle grid position signal from video thread"""
         self.tar_x = x
         self.tar_y = y
-        # Display the values in millimeters (multiply by 1000 for display only)
-        # self.Vision_X.setText(f"{x * 1000:.3f}")
-        # self.Vision_Y.setText(f"{y * 1000:.3f}")
         self.start_move_thread("move")  # Start movement to target position
         
     def move_to_grid_position(self):
@@ -359,7 +344,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             self.is_auto_mode = True
             self.auto_bt.setText("Stop Auto")
             self.auto_check_timer.start()
-            self.auto_pick_and_place()  # Start immediately
+            self.auto_pick_and_place()  # Start auto pick and place
         else:
             # Stop auto mode
             self.is_auto_mode = False
@@ -427,8 +412,6 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             if available_cell:
                 self.tar_x = robot_x
                 self.tar_y = robot_y
-                # self.Vision_X.setText(f"{robot_x:.3f}")
-                # self.Vision_Y.setText(f"{robot_y:.3f}")
                 self.start_move_thread("pnp", dest_id=available_cell)
                 
         elif bottom_objects:
@@ -447,8 +430,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             if middle_coords:
                 self.tar_x = robot_x
                 self.tar_y = robot_y
-                # self.Vision_X.setText(f"{robot_x:.3f}")
-                # self.Vision_Y.setText(f"{robot_y:.3f}")
+                
                 dest_x, dest_y = CoordinateConverter.to_robot_coordinates(
                     middle_coords[0], middle_coords[1],
                     self.workspace_bounds['x_fixed'],
@@ -495,13 +477,11 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
                 )
                 self.tar_x = robot_x
                 self.tar_y = robot_y
-                # self.Vision_X.setText(f"{robot_x:.3f}")
-                # self.Vision_Y.setText(f"{robot_y:.3f}")
                 
                 if destination:  # If grid destination selected
                     self.grid_target = destination[1]
                     self.start_move_thread("pnp", dest_id=destination[1])
-                else:  # Just move to object position
+                else:  # only object selected
                     self.start_move_thread("move")
             elif destination:  # Only grid selected
                 self.grid_target = destination[1]
@@ -517,7 +497,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             self.pnp2_ops = PnP2Operations(
                 self.thread, 
                 self.workspace_bounds,
-                fixed_basket_position=True  # Add this parameter
+                fixed_basket_position=True  # Use fixed basket position mode or find avaliable space mode
             )
             if not self.pnp2_ops.start_operation():
                 print("No baskets detected")
@@ -542,8 +522,8 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
             source_x, source_y, dest_x, dest_y = next_op
             self.tar_x = source_x
             self.tar_y = source_y
-            self.tar_z = 199.99  # Set z-height to 200mm for basket operations
-            # Use pick_basket mode instead of pnp2 for basket operations
+            self.tar_z = 199.99  # Set z-height for picking basket
+            # Use pick_basket mode instead of pnp2 for basket
             if self.pnp2_ops.stage_sequence[self.pnp2_ops.current_stage_index] == 'move_baskets':
                 self.start_move_thread("pick_basket", dest_x=dest_x, dest_y=dest_y)
             else:

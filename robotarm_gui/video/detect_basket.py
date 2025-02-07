@@ -125,7 +125,7 @@ class BasketDetector:
     @staticmethod
     def draw_basket_grid(img, basket_infos, detected_objects=[], show_label=False):
         """Draw basket grid with optional label display"""
-        # Handle single basket info being passed (backward compatibility)
+        # Handle single basket info being passed
         if not isinstance(basket_infos, list):
             basket_infos = [basket_infos]
 
