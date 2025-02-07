@@ -126,7 +126,7 @@ class myclass(Ui_MainWindow, GUIInitializer, JogControls, MoveLControls):
         
         # Initialize video thread
         self.thread = VideoThread(
-            use_realsense=False,
+            use_realsense=True,
             use_calibration=False,
             use_raw_coordinates=False,
             use_interpolation=True
