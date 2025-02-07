@@ -7,7 +7,7 @@ myenv/
 venv/
 screenshot/
 
-**/__pycache__/
-robotarm_gui/__pycache__/*.pyc
-robotarm_gui/__pycache__/*.*.pyc
-**/*.pyc
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
